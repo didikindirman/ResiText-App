@@ -5,3 +5,4 @@ pandas
 PyPDF2
 reportlab
 pdfplumber
+openpyxl
