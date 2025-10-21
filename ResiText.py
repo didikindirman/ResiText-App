@@ -16,10 +16,11 @@ import pdfplumber
 import time 
 
 # --- VARIABEL GLOBAL GUI & STATUS ---
-pdf_file_path_list = [] # Menyimpan daftar jalur PDF
+pdf_file_path_list = [] 
 is_count_match = False
 is_resi_match = False  
-keterangan_list_global = None
+# Diperbarui: global list untuk menyimpan data Kolom 1 DAN Kolom 3
+keterangan_data_global = None 
 pdf_path_label = None 
 output_text = None    
 excel_count_label = None
@@ -28,7 +29,7 @@ last_excel_modified_time = 0
 status_label_count = None 
 status_label_resi = None  
 sort_var = None 
-pdf_list_display = None # Widget untuk menampilkan daftar file PDF
+pdf_list_display = None 
 current_selected_pdf_index = -1 
 
 
@@ -47,8 +48,9 @@ class TextRedirector(object):
     def flush(self):
         pass
 
-# --- FUNGSI UTILITY ---
+# --- FUNGSI UTILITY (DIGUNAKAN UNTUK AUTO-OPEN) ---
 def open_file_in_os(file_path):
+    """Membuka file di sistem operasi default."""
     try:
         if platform.system() == 'Darwin':       # macOS
             subprocess.call(('open', file_path))
@@ -88,7 +90,6 @@ def update_pdf_list_display(pdf_paths, highlight_index=-1):
         pdf_list_display.configure(state='normal')
         pdf_list_display.delete('1.0', tk.END)
         
-        # Hapus tag highlight lama
         pdf_list_display.tag_delete('highlight')
         pdf_list_display.tag_configure('highlight', background='#cceeff')
         
@@ -98,7 +99,6 @@ def update_pdf_list_display(pdf_paths, highlight_index=-1):
                 line = f"{i+1}. {file_name}\n"
                 pdf_list_display.insert(tk.END, line)
                 
-                # Tambahkan highlight jika indeks cocok
                 if i == highlight_index:
                     start_index = f"{i + 1}.0"
                     end_index = f"{i + 1}.{len(line.strip())}"
@@ -110,8 +110,6 @@ def update_pdf_list_display(pdf_paths, highlight_index=-1):
 
 
 # --- FUNGSI MANIPULASI URUTAN PDF ---
-
-# Mendapatkan indeks file yang diklik di ScrolledText
 def get_selected_pdf_index(event):
     global pdf_list_display, current_selected_pdf_index
     if not pdf_list_display:
@@ -119,10 +117,7 @@ def get_selected_pdf_index(event):
         return
         
     try:
-        # Mendapatkan indeks baris (line index) dari klik
         line_number = int(pdf_list_display.index(f"@{event.x},{event.y}").split('.')[0])
-        
-        # Karena nomor baris dimulai dari 1 dan indeks list dimulai dari 0
         selected_index = line_number - 1
         
         if 0 <= selected_index < len(pdf_file_path_list):
@@ -138,16 +133,13 @@ def get_selected_pdf_index(event):
         update_pdf_list_display(pdf_file_path_list, -1)
 
 
-# Menggeser file PDF yang dipilih ke atas
 def move_pdf_up():
     global pdf_file_path_list, current_selected_pdf_index
     
     if current_selected_pdf_index > 0 and current_selected_pdf_index != -1:
-        # Tukar posisi dengan elemen di atasnya
         i = current_selected_pdf_index
         pdf_file_path_list[i], pdf_file_path_list[i-1] = pdf_file_path_list[i-1], pdf_file_path_list[i]
         
-        # Perbarui indeks yang dipilih
         current_selected_pdf_index = i - 1
         
         update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
@@ -159,16 +151,13 @@ def move_pdf_up():
         print("Harap pilih file dari daftar terlebih dahulu.")
 
 
-# Menggeser file PDF yang dipilih ke bawah
 def move_pdf_down():
     global pdf_file_path_list, current_selected_pdf_index
     
     if current_selected_pdf_index != -1 and current_selected_pdf_index < len(pdf_file_path_list) - 1:
-        # Tukar posisi dengan elemen di bawahnya
         i = current_selected_pdf_index
         pdf_file_path_list[i], pdf_file_path_list[i+1] = pdf_file_path_list[i+1], pdf_file_path_list[i]
         
-        # Perbarui indeks yang dipilih
         current_selected_pdf_index = i + 1
         
         update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
@@ -178,7 +167,6 @@ def move_pdf_down():
         print("File sudah berada di urutan paling bawah.")
     else:
         print("Harap pilih file dari daftar terlebih dahulu.")
-
 # --- AKHIR FUNGSI MANIPULASI URUTAN PDF ---
 
 
@@ -189,20 +177,16 @@ def update_check_status_display(match_count, match_resi):
     if sort_var is None:
         return
 
-    # --- TAMPILAN AWAL SEBELUM MEMILIH PDF ---
-    if not pdf_file_path_list: # Cek jika list kosong
+    if not pdf_file_path_list: 
         status_label_count.config(text="1. Baris Data (Excel) dan Halaman (PDF) ⚪", foreground="black")
         status_label_resi.config(text="2. Pengecekan Nomor Resi (5 Digit Terakhir) ⚪", foreground="black")
         return
-    # -----------------------------------------------------------
 
-    # Status 1: Baris Data dan Halaman
     if match_count:
         status_label_count.config(text="1. Baris Data dan Halaman sama ✅", foreground="green")
     else:
         status_label_count.config(text="1. Baris Data dan Halaman TIDAK sama 🚨", foreground="red")
 
-    # Status 2: Resi/Urutan
     if match_count: 
         if sort_var.get() == "Ascending":
             if match_resi:
@@ -242,13 +226,13 @@ def check_excel_modified(root):
     root.after(2000, lambda: check_excel_modified(root))
 
 
-# --- FUNGSI VALIDASI RESI ---
+# --- FUNGSI VALIDASI RESI (Ascending Mode) ---
 def validate_resi_number(pdf_paths, excel_path):
     print("🔬 Validasi Resi (Ascending Mode)...")
     
     try:
         df = pd.read_excel(excel_path, header=None) 
-        # Kolom 7 (index 6) adalah Resi
+        # Ambil data dari kolom ke-7 (indeks 6)
         resi_excel_list = [str(item).strip() for item in df.iloc[:, 6].dropna().tolist() if pd.notna(item)]
         
         if not resi_excel_list:
@@ -258,13 +242,14 @@ def validate_resi_number(pdf_paths, excel_path):
         mismatches = []
         excel_idx = 0
 
-        # Iterasi melalui setiap file PDF dalam daftar
         for pdf_path in pdf_paths:
             try:
+                # Menggunakan PdfReader karena pdfplumber tidak diperlukan di sini
                 pdf_reader = PdfReader(pdf_path)
                 pdf_page_count = len(pdf_reader.pages)
                 
                 for i in range(pdf_page_count):
+                    # Fungsi extract_resi_number_from_pdf menggunakan pdfplumber
                     resi_lengkap_pdf = extract_resi_number_from_pdf(pdf_path, i)
                     
                     resi_bersih_pdf = re.sub(r'\D', '', resi_lengkap_pdf)
@@ -284,13 +269,11 @@ def validate_resi_number(pdf_paths, excel_path):
                                 "Resi Excel (Kolom 7)": resi_excel_value 
                             })
                         excel_idx += 1
-                    # Jika excel_idx mencapai akhir, hentikan validasi
                     if excel_idx >= len(resi_excel_list):
                         break
 
             except Exception as e:
                 print(f"ERROR: Gagal memproses file {os.path.basename(pdf_path)} saat validasi resi: {e}")
-                # Lanjutkan ke file berikutnya
                 continue 
         
         if mismatches:
@@ -312,6 +295,7 @@ def validate_resi_number(pdf_paths, excel_path):
 def extract_resi_number_from_pdf(pdf_path, page_num):
     target_string = "交貨便服務代碼"
     
+    # Fungsi ini memerlukan library pdfplumber
     try:
         with pdfplumber.open(pdf_path) as pdf:
             page = pdf.pages[page_num]
@@ -351,36 +335,36 @@ def extract_resi_number_from_pdf(pdf_path, page_num):
         print(f"ERROR: Gagal Membaca/Memproses PDF di halaman {page_num + 1}: {e}")
         return f"ERROR: Gagal Membaca PDF"
 
-# --- FUNGSI PENGECEKAN KESEIMBANGAN AWAL ---
+# --- FUNGSI PENGECEKAN KESEIMBANGAN AWAL (Memuat Data Kolom 3) ---
 def check_on_select(pdf_paths, show_print=True):
-    global is_count_match, is_resi_match, keterangan_list_global
+    global is_count_match, is_resi_match, keterangan_data_global
     
     is_count_match = False
     is_resi_match = True 
-    keterangan_list_global = None
+    keterangan_data_global = None
     excel_path = get_excel_filename()
 
-    if not excel_path:
-        update_excel_count_label(0)
-        update_pdf_count_label(0)
-        update_check_status_display(False, False)
-        if show_print:
-            print("Peringatan: Tidak ada file Excel ditemukan.")
-        return False
-    
-    if not pdf_paths:
-        update_pdf_count_label(0)
-        update_check_status_display(False, False)
-        if show_print:
-            print("Peringatan: Belum ada file PDF yang dipilih.")
+    if not excel_path or not pdf_paths:
         return False
 
 
     try:
-        # 1. Hitung Baris Excel
-        df = pd.read_excel(excel_path, header=None) 
+        # 1. Memuat Data dari Kolom 1 (indeks 0) dan Kolom 3 (indeks 2)
+        # Tambahkan kolom 3 ke dalam pembacaan
+        df = pd.read_excel(excel_path, header=None, usecols=[0, 2]) 
+        
+        # Bersihkan dan siapkan data (Kolom 1 - Keterangan Barang)
         keterangan_list = [str(item).replace('\n', ' ') for item in df.iloc[:, 0].dropna().tolist()]
+        # Bersihkan dan siapkan data (Kolom 3 - Data Tambahan/Selip)
+        kolom3_list = [str(item).replace('\n', ' ') for item in df.iloc[:, 1].fillna('').tolist()]
+        
+        # Pastikan panjang kolom 1 dan 3 sama (hanya untuk data yang sudah di dropna() di kolom 1)
+        kolom3_list = kolom3_list[:len(keterangan_list)]
+        
         jumlah_keterangan_excel = len(keterangan_list)
+        
+        # Gabungkan data menjadi list of tuples/list of lists: [(kolom1_data, kolom3_data), ...]
+        keterangan_data_global = list(zip(keterangan_list, kolom3_list))
 
         # 2. Hitung Total Halaman PDF dari SEMUA file
         jumlah_halaman_pdf = 0
@@ -403,7 +387,6 @@ def check_on_select(pdf_paths, show_print=True):
 
         if jumlah_keterangan_excel == jumlah_halaman_pdf:
             is_count_match = True
-            keterangan_list_global = keterangan_list
             if show_print:
                 print(f"[STATUS] SUKSES: Jumlah baris data dan halaman SAMA PERSIS.")
 
@@ -421,7 +404,7 @@ def check_on_select(pdf_paths, show_print=True):
                 f"Halaman PDF: {jumlah_halaman_pdf}"
             )
             if show_print:
-                print(f"[STATUS] GAGAL: {error_message.replace('\n', ' ')}")
+                print(f"[STATUS] GAGAL: {error_message}".replace('\n', ' '))
                 
         if show_print:
             print("=" * 50)
@@ -441,8 +424,7 @@ def check_on_select(pdf_paths, show_print=True):
         return False
 
 
-# Fungsi untuk memilih file PDF (DIUBAH UNTUK MULTIPLE SELECTION)
-# Fungsi untuk memilih file PDF (DIUBAH UNTUK MULTIPLE SELECTION DAN REVERSE)
+# Fungsi untuk memilih file PDF (REVERSE URUTAN)
 def choose_pdf_file():
     global pdf_file_path_list, current_selected_pdf_index
     
@@ -454,15 +436,12 @@ def choose_pdf_file():
     if filepaths:
         pdf_file_path_list = list(filepaths)
         
-        # === LOGIKA BARU: REVERSE URUTAN FILE ===
-        # Ini mengasumsikan bahwa urutan default yang dikembalikan (seringkali berdasarkan nama/alfabetis)
-        # perlu dibalik untuk mencocokkan urutan kronologis yang diinginkan (misal: 1, 2, 3...)
+        # MEMBALIKKAN URUTAN FILE (Solusi untuk urutan default yang terbalik)
         pdf_file_path_list.reverse() 
-        print(f"Mengubah urutan file yang diimpor (reverse) untuk menyesuaikan urutan yang logis: {os.path.basename(pdf_file_path_list[0])} di atas.")
-        # ========================================
-
+        print(f"Mengubah urutan file yang diimpor (reverse). File pertama yang akan diproses: {os.path.basename(pdf_file_path_list[0])}")
+        
         pdf_path_label.config(text=f"{len(pdf_file_path_list)} File Dipilih")
-        current_selected_pdf_index = 0 # Otomatis pilih file pertama
+        current_selected_pdf_index = 0 
         update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
         
         check_on_select(pdf_file_path_list, show_print=True)
@@ -473,10 +452,9 @@ def choose_pdf_file():
         update_pdf_list_display([])
         update_excel_count_label(0)
         update_pdf_count_label(0)
-        update_check_status_display(False, False)
+        update_check_status_display(False, False) 
 
 
-# Fungsi untuk mengubah urutan (memanggil ulang pengecekan)
 def change_sort_order(event=None):
     if pdf_file_path_list:
         check_on_select(pdf_file_path_list, show_print=True)
@@ -484,7 +462,7 @@ def change_sort_order(event=None):
         update_check_status_display(is_count_match, is_resi_match)
 
 
-# Fungsi untuk memulai proses utama (MODIFIKASI LOGIKA PENAMAAN)
+# Fungsi untuk memulai proses utama
 def start_process(sort_order):
     global pdf_file_path_list, is_count_match, is_resi_match
 
@@ -498,21 +476,18 @@ def start_process(sort_order):
         messagebox.showerror("Kesalahan", "Pengecekan Status GAGAL. Periksa Output Program untuk detail.")
         return
 
-    # --- LOGIKA PENAMAAN BARU ---
+    # --- LOGIKA PENAMAAN FILE OUTPUT ---
     first_file_path = pdf_file_path_list[0]
     first_file_name_base = os.path.basename(first_file_path)
     base_name, ext = os.path.splitext(first_file_name_base)
     
     if len(pdf_file_path_list) == 1:
-        # Jika hanya 1 file, gunakan nama asli (agar mudah menimpa)
         default_save_name = first_file_name_base
-        print(f"Mode 1 File: Nama default output diatur ke: {default_save_name}")
     else:
-        # Jika lebih dari 1 file, tambahkan sufiks _FULL
         default_save_name = f"{base_name}_FULL{ext}"
-        print(f"Mode Multiple File: Nama default output diatur ke: {default_save_name}")
-    # --- AKHIR LOGIKA PENAMAAN BARU ---
     
+    print(f"Nama default output diatur ke: {default_save_name}")
+
     save_path = filedialog.asksaveasfilename(
         defaultextension=".pdf",
         initialdir=os.path.dirname(first_file_path) or os.getcwd(),
@@ -527,26 +502,27 @@ def start_process(sort_order):
     process_pdf_and_excel(sort_order, pdf_file_path_list, save_path)
 
 
-# --- FUNGSI PROSES UTAMA ---
+# --- FUNGSI PROSES UTAMA (Menambahkan Teks Khusus) ---
 def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
-    global keterangan_list_global, is_count_match, is_resi_match
+    # Diperbarui: menggunakan keterangan_data_global
+    global keterangan_data_global, is_count_match, is_resi_match
 
     if not is_count_match:
-        messagebox.showerror("Kesalahan", "Pengecekan Keseimbangan Gagal. Harap periksa file Excel dan PDF Anda (Baris/Halaman).")
+        messagebox.showerror("Kesalahan", "Pengecekan Keseimbangan Gagal.")
         return
 
     if sort_order == "Ascending" and not is_resi_match:
-        messagebox.showerror("Kesalahan", "Pengecekan Resi Gagal. Harap periksa Kolom 7 Excel dan urutan data.")
+        messagebox.showerror("Kesalahan", "Pengecekan Resi Gagal.")
         return
 
-    keterangan_list = keterangan_list_global 
+    keterangan_data = keterangan_data_global 
 
     print("Mengeksekusi program...")
     print("=" * 50)
 
     try:
         if sort_order == "Descending":
-            keterangan_list.reverse()
+            keterangan_data.reverse()
             print("Urutan keterangan dari Bawah ke Atas (Descending).")
         else:
             print("Urutan keterangan dari Atas ke Bawah (Ascending).")
@@ -554,7 +530,14 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
         pdf_writer = PdfWriter()
         keterangan_index = 0
 
-        # Iterasi melalui setiap file PDF
+        # --- PENGATURAN FONT KUSTOM ---
+        FONT_NORMAL = "Helvetica-Bold"
+        FONT_SIZE_NORMAL = 9  # Ukuran default 
+        FONT_SIZE_NUMBER = 14 # Ukuran khusus untuk angka murni
+        MAX_LINE_WIDTH = 300
+        LINE_SPACING = FONT_SIZE_NORMAL + 1 # Jarak antar baris
+        # -----------------------------
+
         for pdf_input_path in pdf_input_paths:
             print(f"Memproses file: {os.path.basename(pdf_input_path)}...")
 
@@ -564,63 +547,107 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 print(f"Peringatan: Gagal memuat file {os.path.basename(pdf_input_path)}. Melewati file ini. Error: {e}")
                 continue
 
-            # Hanya perlu mendapatkan tinggi halaman dari halaman pertama PDF pertama
             if 'page_height' not in locals():
                 page_height = float(pdf_reader.pages[0].mediabox.height)
 
             for i, page in enumerate(pdf_reader.pages):
-                if keterangan_index >= len(keterangan_list):
+                if keterangan_index >= len(keterangan_data):
                     print(f"Peringatan: Keterangan Excel habis di Halaman {i+1} dari {os.path.basename(pdf_input_path)}. Berhenti memproses halaman PDF.")
                     break
 
-                keterangan_asli = keterangan_list[keterangan_index]
+                # Ambil data dari list global: (keterangan_barang, data_kolom_3)
+                keterangan_barang_asli, data_kolom3_asli = keterangan_data[keterangan_index]
                 keterangan_index += 1
+                
+                # --- LOGIKA PENAMBAHAN TULISAN KHUSUS (SELIPKAN 60 NT) ---
+                keterangan_final = keterangan_barang_asli
+                # Cek apakah angka '60' ada di data_kolom3_asli (menggunakan string)
+                if '60' in str(data_kolom3_asli):
+                    teks_khusus = "!!! SELIPKAN 60NT !!!  "
+                    print(f" -> Deteksi '60' di Kolom 3 (Halaman {i+1}): Menambahkan '{teks_khusus.strip()}'")
+                    keterangan_final = teks_khusus + keterangan_barang_asli
+                # -----------------------------------------------------------
+
                 
                 packet = io.BytesIO()
                 can = canvas.Canvas(packet, pagesize=A4)
 
-                # --- LOGIKA REPORTLAB UNTUK OVERLAY ---
-                x_pos_center = 258
+                x_pos_center = 260
                 y_pos_from_top = 190
                 y_pos_from_bottom = page_height - y_pos_from_top
 
-                can.saveState()
+                # --- 1. LOGIKA WORD WRAPPING ---
+                # Menggunakan FONT_SIZE_NORMAL untuk perhitungan lebar baris
+                can.setFont(FONT_NORMAL, FONT_SIZE_NORMAL)
                 
-                # --- PENGATURAN KUSTOM DITERAPKAN (BERDASARKAN SAVED INFO) ---
-                font_size = 9 
-                can.setFont("Helvetica-Bold", font_size)
-                max_line_width = 300 
-                # ------------------------------------
-
-                words = keterangan_asli.split(' ')
+                # Menggunakan keterangan_final
+                words = keterangan_final.split(' ')
                 lines = []
                 current_line = ""
                 for word in words:
-                    if not current_line and can.stringWidth(word, "Helvetica-Bold", font_size) >= max_line_width:
-                        lines.append(word) 
-                        current_line = ""
-                        continue
-                        
-                    if can.stringWidth(current_line + " " + word, "Helvetica-Bold", font_size) < max_line_width:
-                        current_line += " " + word
+                    # Menggunakan spasi agar perhitungan lebar akurat
+                    test_line = current_line + " " + word if current_line else word
+                    
+                    # Cek lebar menggunakan FONT_SIZE_NORMAL
+                    if can.stringWidth(test_line, FONT_NORMAL, FONT_SIZE_NORMAL) < MAX_LINE_WIDTH:
+                        current_line = test_line
                     else:
-                        lines.append(current_line.strip())
+                        if current_line:
+                            lines.append(current_line.strip())
                         current_line = word
                 lines.append(current_line.strip())
-
-                text_block_height = len(lines) * can._leading
+                
+                # --- 2. PENENTUAN POSISI AWAL ---
+                
+                # Perkiraan tinggi blok (menggunakan LINE_SPACING)
+                text_block_height = len(lines) * LINE_SPACING 
                 initial_y_pos = y_pos_from_bottom + (text_block_height / 2)
 
-                # Cetak KETERANGAN BARANG (Diputar 90 derajat)
+                can.saveState()
                 can.translate(x_pos_center, initial_y_pos)
                 can.rotate(90)
                 
+                # --- 3. LOGIKA CETAK DENGAN FONT SIZE YANG BERBEDA ---
                 for j, line in enumerate(lines):
-                    line_width = can.stringWidth(line, "Helvetica-Bold", font_size)
-                    can.drawString(-line_width / 2, j * -can._leading, line)
+                    current_x = 0
+                    line_words = line.split(' ')
+                    
+                    # --- Kalkulasi Lebar untuk Centering ---
+                    total_width = 0
+                    for word in line_words:
+                        # Pengecekan hanya untuk angka murni
+                        is_number = word.isdigit()
+                        calc_font_size = FONT_SIZE_NUMBER if is_number else FONT_SIZE_NORMAL
+                        
+                        total_width += can.stringWidth(word, FONT_NORMAL, calc_font_size)
+                        total_width += can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL) 
+                    
+                    if total_width > 0:
+                        total_width -= can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL) 
+
+                    start_x = -total_width / 2
+                    # --- Akhir Kalkulasi Lebar ---
+
+                    for k, word in enumerate(line_words):
+                        # Pengecekan hanya untuk angka murni
+                        is_number = word.isdigit()
+                        
+                        # Tentukan font size: 12 jika angka murni, 9 jika bukan
+                        font_size = FONT_SIZE_NUMBER if is_number else FONT_SIZE_NORMAL
+                        can.setFont(FONT_NORMAL, font_size)
+
+                        word_width = can.stringWidth(word, FONT_NORMAL, font_size)
+                        
+                        # Menggunakan LINE_SPACING 
+                        y_pos_in_rotation = j * -LINE_SPACING
+                        
+                        # Mencetak kata dengan font size yang telah disesuaikan
+                        can.drawString(start_x + current_x, y_pos_in_rotation, word)
+                        
+                        # Pindahkan posisi x untuk kata berikutnya
+                        current_x += word_width + can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL)
                 
                 can.restoreState()
-                
                 can.save()
                 # --- AKHIR LOGIKA REPORTLAB ---
 
@@ -629,15 +656,20 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 page.merge_page(new_pdf.pages[0])
                 pdf_writer.add_page(page)
             
-            if keterangan_index >= len(keterangan_list):
-                break # Berhenti iterasi file jika data Excel sudah habis
+            if keterangan_index >= len(keterangan_data):
+                break 
 
         
         with open(pdf_output_path, 'wb') as f:
             pdf_writer.write(f)
 
         print(f"\nOperasi selesai. File hasil disimpan sebagai '{os.path.basename(pdf_output_path)}'.")
-        messagebox.showinfo("Selesai", f"Operasi selesai. File hasil disimpan sebagai '{os.path.basename(pdf_output_path)}'.")
+        
+        # --- BUKA FILE OTOMATIS (Sesuai Permintaan User) ---
+        open_file_in_os(pdf_output_path)
+        # ---------------------------
+
+        messagebox.showinfo("Selesai", f"Operasi selesai. File hasil disimpan sebagai '{os.path.basename(pdf_output_path)}' dan telah dibuka.")
 
     except Exception as e:
         print(f"\nTerjadi kesalahan: {e}")
@@ -671,14 +703,12 @@ def create_ui():
     main_frame = ttk.Frame(root, padding=20)
     main_frame.pack(fill=tk.BOTH, expand=True)
 
-    header_label = ttk.Label(main_frame, text="ResiText", style='Header.TLabel')
+    header_label = ttk.Label(main_frame, text="Add Text to PDF", style='Header.TLabel')
     header_label.pack(pady=(0, 20))
 
-    # --- FRAME UTAMA UNTUK STEP 1, 2, & 3 (Menggunakan Grid) ---
     top_grid_frame = ttk.Frame(main_frame)
     top_grid_frame.pack(fill=tk.X, pady=(0, 20))
     
-    # Kolom 0: Step 1 (Urutan) | Kolom 2: Step 2 (Excel) | Kolom 4: Step 3 (PDF)
     top_grid_frame.columnconfigure(0, weight=1) 
     top_grid_frame.columnconfigure(2, weight=1) 
     top_grid_frame.columnconfigure(4, weight=1) 
@@ -687,9 +717,7 @@ def create_ui():
     sort_var = tk.StringVar(value="Ascending") 
     step1_frame = ttk.Frame(top_grid_frame)
     step1_frame.grid(row=0, column=0, padx=10, sticky='nwes')
-    # Label di center
     ttk.Label(step1_frame, text="Step 1: Jenis Urutan Data", style='Step.TLabel').pack(pady=(0, 10), anchor='center') 
-    # Wrap radio buttons in a frame to center them
     radio_frame1 = ttk.Frame(step1_frame)
     radio_frame1.pack(anchor='center', pady=(5, 10))
 
@@ -699,17 +727,14 @@ def create_ui():
     desc_radio = ttk.Radiobutton(radio_frame1, text="Descending (Family-Mart)", variable=sort_var, value="Descending", command=change_sort_order)
     desc_radio.pack(anchor='w', pady=(0, 0)) 
     
-    # --- GARIS TEGAK 1 (Kolom 1) ---
     ttk.Separator(top_grid_frame, orient='vertical').grid(row=0, column=1, sticky='ns', padx=10)
 
 
     # --- STEP 2: EXCEL DATA (Kolom 2) ---
     step2_frame = ttk.Frame(top_grid_frame)
     step2_frame.grid(row=0, column=2, padx=10, sticky='nwes')
-    # Label di center
     ttk.Label(step2_frame, text="Step 2: Excel Data", style='Step.TLabel').pack(pady=(0, 10), anchor='center')
     
-    # Wrap content in a sub-frame to center it
     excel_content_frame = ttk.Frame(step2_frame)
     excel_content_frame.pack(anchor='center')
     
@@ -729,7 +754,6 @@ def create_ui():
                                  anchor='center', justify=tk.CENTER)
     excel_count_label.pack(expand=True, fill='both') 
 
-    # --- GARIS TEGAK 2 (Kolom 3) ---
     ttk.Separator(top_grid_frame, orient='vertical').grid(row=0, column=3, sticky='ns', padx=10)
 
 
@@ -737,36 +761,28 @@ def create_ui():
     step3_frame = ttk.Frame(top_grid_frame)
     step3_frame.grid(row=0, column=4, padx=10, sticky='nwes')
     
-    # Label Header
-    ttk.Label(step3_frame, text="Step 3: Pilih Resi PDF", style='Step.TLabel').pack(pady=(0, 10), anchor='center')
+    ttk.Label(step3_frame, text="Step 3: Pilih Resi PDF (Multi-file)", style='Step.TLabel').pack(pady=(0, 10), anchor='center')
     
-    # Frame untuk menampung elemen-elemen agar mudah di-center
     pdf_controls_frame = ttk.Frame(step3_frame)
     pdf_controls_frame.pack(anchor='center', fill='x', padx=10)
 
-    # 1. Keterangan status file yang dipilih (Pusat)
     pdf_path_label = ttk.Label(pdf_controls_frame, text="Tidak ada file yang dipilih")
     pdf_path_label.pack(pady=(5, 5), anchor='center') 
     
-    # 2. Frame untuk tombol ADD (Pusat)
     pdf_input_frame = ttk.Frame(pdf_controls_frame)
     pdf_input_frame.pack(pady=5, anchor='center') 
     
-    # Tombol Add PDF
     ttk.Button(pdf_input_frame, text="Add PDF(s)", command=choose_pdf_file, style='TButton').pack(side=tk.LEFT)
     
-    # BARU: Widget untuk menampilkan daftar nama file PDF
     ttk.Label(pdf_controls_frame, text="Daftar File Dipilih:").pack(pady=(10, 2), anchor='w')
     
-    # Frame untuk ScrolledText dan Tombol Atur Urutan
     list_and_control_frame = ttk.Frame(pdf_controls_frame)
     list_and_control_frame.pack(fill=tk.X, expand=True)
 
     pdf_list_display = ScrolledText(list_and_control_frame, height=5, width=40, state='disabled', wrap=tk.WORD, relief='sunken', borderwidth=1)
     pdf_list_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    pdf_list_display.bind('<Button-1>', get_selected_pdf_index) # Bind klik mouse untuk memilih item
+    pdf_list_display.bind('<Button-1>', get_selected_pdf_index) 
 
-    # Frame untuk tombol Up/Down
     order_buttons_frame = ttk.Frame(list_and_control_frame)
     order_buttons_frame.pack(side=tk.RIGHT, padx=(5, 0))
 
@@ -774,9 +790,7 @@ def create_ui():
     ttk.Button(order_buttons_frame, text="▼ Down", command=move_pdf_down).pack(fill=tk.X, pady=2)
     
     
-    # Keterangan Total Halaman PDF (CENTERED)
     ttk.Label(pdf_controls_frame, text="Total Halaman PDF:").pack(pady=(10, 2), anchor='center')
-    # Kotak hitungan di-center menggunakan anchor='center' pada frame penampung
     pdf_count_box = tk.Frame(pdf_controls_frame, bg=STATUS_BOX_BG, relief=STATUS_BOX_RELIEF, borderwidth=1, width=150, height=30)
     pdf_count_box.pack(anchor='center') 
     pdf_count_box.pack_propagate(False) 
@@ -785,7 +799,6 @@ def create_ui():
                                  anchor='center', justify=tk.CENTER) 
     pdf_count_label.pack(expand=True, fill='both')
     
-    # --------------------------------------------------------------------------
     
     # --- COMMAND SIMPLE KECIL DI ATAS START ---
     step_status_frame = tk.Frame(main_frame, bg=STATUS_FRAME_BG, relief='groove', borderwidth=1, padx=10, pady=5)
@@ -810,7 +823,6 @@ def create_ui():
     sys.stdout = TextRedirector(output_text, "stdout")
     sys.stderr = TextRedirector(output_text, "stderr")
 
-    # Inisialisasi hitungan baris Excel saat startup
     excel_path_init = get_excel_filename()
     if excel_path_init:
         try:
