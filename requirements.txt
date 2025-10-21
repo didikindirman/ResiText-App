@@ -1,0 +1,7 @@
+# requirements.txt
+# Pustaka utama yang dibutuhkan untuk manipulasi Excel, PDF, dan GUI.
+
+pandas
+PyPDF2
+reportlab
+pdfplumber

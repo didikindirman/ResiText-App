@@ -1,0 +1,837 @@
+import pandas as pd
+from PyPDF2 import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+import io
+import glob
+import os
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from tkinter.scrolledtext import ScrolledText
+import sys
+import subprocess
+import platform
+import re
+import pdfplumber 
+import time 
+
+# --- VARIABEL GLOBAL GUI & STATUS ---
+pdf_file_path_list = [] # Menyimpan daftar jalur PDF
+is_count_match = False
+is_resi_match = False  
+keterangan_list_global = None
+pdf_path_label = None 
+output_text = None    
+excel_count_label = None
+pdf_count_label = None
+last_excel_modified_time = 0 
+status_label_count = None 
+status_label_resi = None  
+sort_var = None 
+pdf_list_display = None # Widget untuk menampilkan daftar file PDF
+current_selected_pdf_index = -1 
+
+
+# --- FUNGSI REDIRECT OUTPUT ---
+class TextRedirector(object):
+    def __init__(self, widget, tag="stdout"):
+        self.widget = widget
+        self.tag = tag
+
+    def write(self, str_to_write):
+        self.widget.configure(state="normal")
+        self.widget.insert(tk.END, str_to_write, self.tag)
+        self.widget.see(tk.END)
+        self.widget.configure(state="disabled")
+
+    def flush(self):
+        pass
+
+# --- FUNGSI UTILITY ---
+def open_file_in_os(file_path):
+    try:
+        if platform.system() == 'Darwin':       # macOS
+            subprocess.call(('open', file_path))
+        elif platform.system() == 'Windows':    # Windows
+            os.startfile(file_path)
+        else:                                   # Linux
+            subprocess.call(('xdg-open', file_path))
+    except FileNotFoundError:
+        messagebox.showerror("Kesalahan", "Aplikasi default untuk membuka file tidak ditemukan.")
+    except Exception as e:
+        messagebox.showerror("Kesalahan", f"Terjadi kesalahan saat mencoba membuka file: {e}")
+
+def get_excel_filename():
+    excel_files = glob.glob('*.xlsx') + glob.glob('*.xls')
+    return excel_files[0] if excel_files else None
+
+def edit_excel_file():
+    excel_path = get_excel_filename()
+    if excel_path:
+        print(f"Membuka file Excel: {os.path.basename(excel_path)}")
+        open_file_in_os(excel_path)
+    else:
+        messagebox.showerror("Kesalahan", "Tidak ada file Excel ditemukan di folder yang sama.")
+
+def update_excel_count_label(total_rows):
+    if excel_count_label:
+        excel_count_label.config(text=f"{total_rows}")
+
+def update_pdf_count_label(total_pages):
+    if pdf_count_label:
+        pdf_count_label.config(text=f"{total_pages}")
+
+# Fungsi untuk menampilkan daftar PDF yang dipilih
+def update_pdf_list_display(pdf_paths, highlight_index=-1):
+    global pdf_list_display
+    if pdf_list_display:
+        pdf_list_display.configure(state='normal')
+        pdf_list_display.delete('1.0', tk.END)
+        
+        # Hapus tag highlight lama
+        pdf_list_display.tag_delete('highlight')
+        pdf_list_display.tag_configure('highlight', background='#cceeff')
+        
+        if pdf_paths:
+            for i, path in enumerate(pdf_paths):
+                file_name = os.path.basename(path)
+                line = f"{i+1}. {file_name}\n"
+                pdf_list_display.insert(tk.END, line)
+                
+                # Tambahkan highlight jika indeks cocok
+                if i == highlight_index:
+                    start_index = f"{i + 1}.0"
+                    end_index = f"{i + 1}.{len(line.strip())}"
+                    pdf_list_display.tag_add('highlight', start_index, end_index)
+
+        else:
+            pdf_list_display.insert(tk.END, "Belum ada file PDF yang dipilih.")
+        pdf_list_display.configure(state='disabled')
+
+
+# --- FUNGSI MANIPULASI URUTAN PDF ---
+
+# Mendapatkan indeks file yang diklik di ScrolledText
+def get_selected_pdf_index(event):
+    global pdf_list_display, current_selected_pdf_index
+    if not pdf_list_display:
+        current_selected_pdf_index = -1
+        return
+        
+    try:
+        # Mendapatkan indeks baris (line index) dari klik
+        line_number = int(pdf_list_display.index(f"@{event.x},{event.y}").split('.')[0])
+        
+        # Karena nomor baris dimulai dari 1 dan indeks list dimulai dari 0
+        selected_index = line_number - 1
+        
+        if 0 <= selected_index < len(pdf_file_path_list):
+            current_selected_pdf_index = selected_index
+            update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
+            print(f"File terpilih: {os.path.basename(pdf_file_path_list[current_selected_pdf_index])} (Index: {current_selected_pdf_index})")
+        else:
+            current_selected_pdf_index = -1
+            update_pdf_list_display(pdf_file_path_list, -1)
+            
+    except Exception:
+        current_selected_pdf_index = -1
+        update_pdf_list_display(pdf_file_path_list, -1)
+
+
+# Menggeser file PDF yang dipilih ke atas
+def move_pdf_up():
+    global pdf_file_path_list, current_selected_pdf_index
+    
+    if current_selected_pdf_index > 0 and current_selected_pdf_index != -1:
+        # Tukar posisi dengan elemen di atasnya
+        i = current_selected_pdf_index
+        pdf_file_path_list[i], pdf_file_path_list[i-1] = pdf_file_path_list[i-1], pdf_file_path_list[i]
+        
+        # Perbarui indeks yang dipilih
+        current_selected_pdf_index = i - 1
+        
+        update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
+        check_on_select(pdf_file_path_list, show_print=True)
+        print(f"Menggeser file ke atas. Urutan file diubah.")
+    elif current_selected_pdf_index == 0:
+        print("File sudah berada di urutan paling atas.")
+    else:
+        print("Harap pilih file dari daftar terlebih dahulu.")
+
+
+# Menggeser file PDF yang dipilih ke bawah
+def move_pdf_down():
+    global pdf_file_path_list, current_selected_pdf_index
+    
+    if current_selected_pdf_index != -1 and current_selected_pdf_index < len(pdf_file_path_list) - 1:
+        # Tukar posisi dengan elemen di bawahnya
+        i = current_selected_pdf_index
+        pdf_file_path_list[i], pdf_file_path_list[i+1] = pdf_file_path_list[i+1], pdf_file_path_list[i]
+        
+        # Perbarui indeks yang dipilih
+        current_selected_pdf_index = i + 1
+        
+        update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
+        check_on_select(pdf_file_path_list, show_print=True)
+        print(f"Menggeser file ke bawah. Urutan file diubah.")
+    elif current_selected_pdf_index == len(pdf_file_path_list) - 1 and current_selected_pdf_index != -1:
+        print("File sudah berada di urutan paling bawah.")
+    else:
+        print("Harap pilih file dari daftar terlebih dahulu.")
+
+# --- AKHIR FUNGSI MANIPULASI URUTAN PDF ---
+
+
+# --- FUNGSI UPDATE TAMPILAN STATUS ---
+def update_check_status_display(match_count, match_resi):
+    global status_label_count, status_label_resi, pdf_file_path_list, sort_var
+
+    if sort_var is None:
+        return
+
+    # --- TAMPILAN AWAL SEBELUM MEMILIH PDF ---
+    if not pdf_file_path_list: # Cek jika list kosong
+        status_label_count.config(text="1. Baris Data (Excel) dan Halaman (PDF) ⚪", foreground="black")
+        status_label_resi.config(text="2. Pengecekan Nomor Resi (5 Digit Terakhir) ⚪", foreground="black")
+        return
+    # -----------------------------------------------------------
+
+    # Status 1: Baris Data dan Halaman
+    if match_count:
+        status_label_count.config(text="1. Baris Data dan Halaman sama ✅", foreground="green")
+    else:
+        status_label_count.config(text="1. Baris Data dan Halaman TIDAK sama 🚨", foreground="red")
+
+    # Status 2: Resi/Urutan
+    if match_count: 
+        if sort_var.get() == "Ascending":
+            if match_resi:
+                status_label_resi.config(text="2. Nomor Resi (5 Digit Terakhir) Sesuai ✅", foreground="green")
+            else:
+                status_label_resi.config(text="2. Nomor Resi TIDAK Sesuai 🚨", foreground="red")
+        else:
+            status_label_resi.config(text="2. Urutan Descending dipilih (Resi OK) ✅", foreground="green")
+    else:
+        status_label_resi.config(text="2. (Menunggu Baris/Halaman Sama) 🟡", foreground="orange")
+
+
+# --- FUNGSI AUTO-REFRESH EXCEL ---
+def check_excel_modified(root):
+    global last_excel_modified_time, pdf_file_path_list
+    
+    excel_path = get_excel_filename()
+    
+    if excel_path:
+        try:
+            current_modified_time = os.path.getmtime(excel_path)
+            
+            if current_modified_time > last_excel_modified_time:
+                last_excel_modified_time = current_modified_time
+                
+                if pdf_file_path_list:
+                    check_on_select(pdf_file_path_list, show_print=True)
+                else:
+                    df = pd.read_excel(excel_path, header=None)
+                    valid_rows = df.iloc[:, 0].dropna().shape[0]
+                    update_excel_count_label(valid_rows)
+                    print(f"✅ Refresh: Total Baris Data Excel diperbarui menjadi {valid_rows}.")
+            
+        except Exception as e:
+            print(f"Peringatan Auto-Refresh: Gagal membaca status file Excel: {e}")
+            
+    root.after(2000, lambda: check_excel_modified(root))
+
+
+# --- FUNGSI VALIDASI RESI ---
+def validate_resi_number(pdf_paths, excel_path):
+    print("🔬 Validasi Resi (Ascending Mode)...")
+    
+    try:
+        df = pd.read_excel(excel_path, header=None) 
+        # Kolom 7 (index 6) adalah Resi
+        resi_excel_list = [str(item).strip() for item in df.iloc[:, 6].dropna().tolist() if pd.notna(item)]
+        
+        if not resi_excel_list:
+            print("Peringatan: Kolom 7 (Resi) di Excel kosong. Lanjut tanpa validasi resi.")
+            return True 
+
+        mismatches = []
+        excel_idx = 0
+
+        # Iterasi melalui setiap file PDF dalam daftar
+        for pdf_path in pdf_paths:
+            try:
+                pdf_reader = PdfReader(pdf_path)
+                pdf_page_count = len(pdf_reader.pages)
+                
+                for i in range(pdf_page_count):
+                    resi_lengkap_pdf = extract_resi_number_from_pdf(pdf_path, i)
+                    
+                    resi_bersih_pdf = re.sub(r'\D', '', resi_lengkap_pdf)
+                    resi_5_digit_pdf = resi_bersih_pdf[-5:] if len(resi_bersih_pdf) >= 5 else resi_bersih_pdf
+                    
+                    if excel_idx < len(resi_excel_list):
+                        resi_excel_value = resi_excel_list[excel_idx]
+                        resi_bersih_excel = re.sub(r'\D', '', resi_excel_value)
+                        resi_5_digit_excel = resi_bersih_excel[-5:] if len(resi_bersih_excel) >= 5 else resi_bersih_excel
+
+                        if resi_5_digit_pdf != resi_5_digit_excel:
+                            mismatches.append({
+                                "File PDF": os.path.basename(pdf_path),
+                                "Halaman PDF": i + 1,
+                                "Baris Excel": excel_idx + 1,
+                                "Resi PDF (5 Digit Terakhir)": resi_5_digit_pdf,
+                                "Resi Excel (Kolom 7)": resi_excel_value 
+                            })
+                        excel_idx += 1
+                    # Jika excel_idx mencapai akhir, hentikan validasi
+                    if excel_idx >= len(resi_excel_list):
+                        break
+
+            except Exception as e:
+                print(f"ERROR: Gagal memproses file {os.path.basename(pdf_path)} saat validasi resi: {e}")
+                # Lanjutkan ke file berikutnya
+                continue 
+        
+        if mismatches:
+            print("🚨 GAGAL: Ditemukan ketidakcocokan 5 Digit Terakhir resi:")
+            for m in mismatches:
+                print(f"-> File {m['File PDF']}, Halaman {m['Halaman PDF']} (Baris Excel {m['Baris Excel']}): PDF 5 Digit Terakhir '{m['Resi PDF (5 Digit Terakhir)']}' TIDAK SAMA dengan Excel '{m['Resi Excel (Kolom 7)']}'")
+            return False
+
+        print("[STATUS] SUKSES: 5 Digit Terakhir resi di PDF cocok dengan Kolom 7 Excel.")
+        return True
+
+    except Exception as e:
+        print(f"ERROR: Terjadi kesalahan saat validasi resi: {e}")
+        messagebox.showerror("Kesalahan Validasi", f"Terjadi kesalahan saat membandingkan data resi: {e}. Pastikan Kolom 7 terisi data yang benar.")
+        return False
+
+
+# --- FUNGSI EKSTRAKSI RESI ---
+def extract_resi_number_from_pdf(pdf_path, page_num):
+    target_string = "交貨便服務代碼"
+    
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            page = pdf.pages[page_num]
+            text = page.extract_text()
+            
+            if text is None:
+                return "ERROR: Teks Tidak Dapat Diekstrak"
+                
+            cleaned_text = " ".join(text.split())
+
+            if target_string in cleaned_text:
+                specific_pattern = re.compile(
+                    r'交貨便服務代碼\s*[:：]\s*([\w\d\-]+)', 
+                    re.IGNORECASE
+                )
+                match = specific_pattern.search(cleaned_text)
+                
+                if match:
+                    return match.group(1).strip()
+                else:
+                    return f"DEBUG: '{target_string}' Ditemukan, TAPI POLA REGEX GAGAL" 
+            
+            # --- POLA CADANGAN ---
+            long_number_pattern = re.compile(r'(\d{4}\s\d{4}\s\d{4}\s\d{4})')
+            match = long_number_pattern.search(text)
+            if match:
+                return match.group(1).replace(' ', '')
+                
+            short_id_pattern = re.compile(r'(DRE\s*\d{3}\s*\d{4})')
+            match = short_id_pattern.search(text)
+            if match:
+                return match.group(1).replace(' ', '')
+                    
+            return f"DEBUG: '{target_string}' TIDAK DITEMUKAN"
+            
+    except Exception as e:
+        print(f"ERROR: Gagal Membaca/Memproses PDF di halaman {page_num + 1}: {e}")
+        return f"ERROR: Gagal Membaca PDF"
+
+# --- FUNGSI PENGECEKAN KESEIMBANGAN AWAL ---
+def check_on_select(pdf_paths, show_print=True):
+    global is_count_match, is_resi_match, keterangan_list_global
+    
+    is_count_match = False
+    is_resi_match = True 
+    keterangan_list_global = None
+    excel_path = get_excel_filename()
+
+    if not excel_path:
+        update_excel_count_label(0)
+        update_pdf_count_label(0)
+        update_check_status_display(False, False)
+        if show_print:
+            print("Peringatan: Tidak ada file Excel ditemukan.")
+        return False
+    
+    if not pdf_paths:
+        update_pdf_count_label(0)
+        update_check_status_display(False, False)
+        if show_print:
+            print("Peringatan: Belum ada file PDF yang dipilih.")
+        return False
+
+
+    try:
+        # 1. Hitung Baris Excel
+        df = pd.read_excel(excel_path, header=None) 
+        keterangan_list = [str(item).replace('\n', ' ') for item in df.iloc[:, 0].dropna().tolist()]
+        jumlah_keterangan_excel = len(keterangan_list)
+
+        # 2. Hitung Total Halaman PDF dari SEMUA file
+        jumlah_halaman_pdf = 0
+        for pdf_path in pdf_paths:
+            try:
+                pdf_reader = PdfReader(pdf_path)
+                jumlah_halaman_pdf += len(pdf_reader.pages)
+            except Exception as e:
+                print(f"Peringatan: Gagal membaca file PDF {os.path.basename(pdf_path)}: {e}")
+                
+        
+        update_excel_count_label(jumlah_keterangan_excel)
+        update_pdf_count_label(jumlah_halaman_pdf)
+
+        if show_print:
+            print("\n" + "=" * 50)
+            print(f"✅ Pengecekan Keseimbangan Data...")
+            print(f"-> Jumlah Baris Data (Kolom 1) di Excel: {jumlah_keterangan_excel}")
+            print(f"-> Jumlah Halaman Total dari PDF: {jumlah_halaman_pdf}")
+
+        if jumlah_keterangan_excel == jumlah_halaman_pdf:
+            is_count_match = True
+            keterangan_list_global = keterangan_list
+            if show_print:
+                print(f"[STATUS] SUKSES: Jumlah baris data dan halaman SAMA PERSIS.")
+
+            if sort_var.get() == "Ascending":
+                is_resi_match = validate_resi_number(pdf_paths, excel_path)
+            else:
+                is_resi_match = True 
+
+        else:
+            is_count_match = False
+            is_resi_match = False
+            error_message = (
+                f"🚨 PERINGATAN! JUMLAH TIDAK SAMA!\n"
+                f"Baris Data Excel: {jumlah_keterangan_excel}\n"
+                f"Halaman PDF: {jumlah_halaman_pdf}"
+            )
+            if show_print:
+                print(f"[STATUS] GAGAL: {error_message.replace('\n', ' ')}")
+                
+        if show_print:
+            print("=" * 50)
+            
+        update_check_status_display(is_count_match, is_resi_match)
+        return is_count_match and is_resi_match
+
+    except Exception as e:
+        update_excel_count_label(0)
+        update_pdf_count_label(0)
+        is_count_match = False
+        is_resi_match = False
+        update_check_status_display(False, False)
+        if show_print:
+            print(f"\n[STATUS] ERROR: Terjadi kesalahan saat pengecekan file: {e}")
+            messagebox.showerror("Kesalahan Pengecekan", f"Terjadi kesalahan saat memuat data: {e}")
+        return False
+
+
+# Fungsi untuk memilih file PDF (DIUBAH UNTUK MULTIPLE SELECTION)
+# Fungsi untuk memilih file PDF (DIUBAH UNTUK MULTIPLE SELECTION DAN REVERSE)
+def choose_pdf_file():
+    global pdf_file_path_list, current_selected_pdf_index
+    
+    filepaths = filedialog.askopenfilenames(
+        title="Pilih File Resi (PDF) - Boleh Pilih Lebih Dari Satu",
+        filetypes=[("PDF files", "*.pdf")]
+    )
+    
+    if filepaths:
+        pdf_file_path_list = list(filepaths)
+        
+        # === LOGIKA BARU: REVERSE URUTAN FILE ===
+        # Ini mengasumsikan bahwa urutan default yang dikembalikan (seringkali berdasarkan nama/alfabetis)
+        # perlu dibalik untuk mencocokkan urutan kronologis yang diinginkan (misal: 1, 2, 3...)
+        pdf_file_path_list.reverse() 
+        print(f"Mengubah urutan file yang diimpor (reverse) untuk menyesuaikan urutan yang logis: {os.path.basename(pdf_file_path_list[0])} di atas.")
+        # ========================================
+
+        pdf_path_label.config(text=f"{len(pdf_file_path_list)} File Dipilih")
+        current_selected_pdf_index = 0 # Otomatis pilih file pertama
+        update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
+        
+        check_on_select(pdf_file_path_list, show_print=True)
+    else:
+        pdf_file_path_list = [] 
+        pdf_path_label.config(text="Tidak ada file yang dipilih")
+        current_selected_pdf_index = -1
+        update_pdf_list_display([])
+        update_excel_count_label(0)
+        update_pdf_count_label(0)
+        update_check_status_display(False, False)
+
+
+# Fungsi untuk mengubah urutan (memanggil ulang pengecekan)
+def change_sort_order(event=None):
+    if pdf_file_path_list:
+        check_on_select(pdf_file_path_list, show_print=True)
+    else:
+        update_check_status_display(is_count_match, is_resi_match)
+
+
+# Fungsi untuk memulai proses utama (MODIFIKASI LOGIKA PENAMAAN)
+def start_process(sort_order):
+    global pdf_file_path_list, is_count_match, is_resi_match
+
+    output_text.delete(1.0, tk.END)
+
+    if not pdf_file_path_list:
+        messagebox.showerror("Kesalahan", "Harap pilih minimal satu file PDF terlebih dahulu.")
+        return
+    
+    if not check_on_select(pdf_file_path_list, show_print=True):
+        messagebox.showerror("Kesalahan", "Pengecekan Status GAGAL. Periksa Output Program untuk detail.")
+        return
+
+    # --- LOGIKA PENAMAAN BARU ---
+    first_file_path = pdf_file_path_list[0]
+    first_file_name_base = os.path.basename(first_file_path)
+    base_name, ext = os.path.splitext(first_file_name_base)
+    
+    if len(pdf_file_path_list) == 1:
+        # Jika hanya 1 file, gunakan nama asli (agar mudah menimpa)
+        default_save_name = first_file_name_base
+        print(f"Mode 1 File: Nama default output diatur ke: {default_save_name}")
+    else:
+        # Jika lebih dari 1 file, tambahkan sufiks _FULL
+        default_save_name = f"{base_name}_FULL{ext}"
+        print(f"Mode Multiple File: Nama default output diatur ke: {default_save_name}")
+    # --- AKHIR LOGIKA PENAMAAN BARU ---
+    
+    save_path = filedialog.asksaveasfilename(
+        defaultextension=".pdf",
+        initialdir=os.path.dirname(first_file_path) or os.getcwd(),
+        initialfile=default_save_name,
+        filetypes=[("PDF files", "*.pdf")]
+    )
+
+    if not save_path:
+        print("Operasi dibatalkan oleh pengguna.")
+        return
+
+    process_pdf_and_excel(sort_order, pdf_file_path_list, save_path)
+
+
+# --- FUNGSI PROSES UTAMA ---
+def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
+    global keterangan_list_global, is_count_match, is_resi_match
+
+    if not is_count_match:
+        messagebox.showerror("Kesalahan", "Pengecekan Keseimbangan Gagal. Harap periksa file Excel dan PDF Anda (Baris/Halaman).")
+        return
+
+    if sort_order == "Ascending" and not is_resi_match:
+        messagebox.showerror("Kesalahan", "Pengecekan Resi Gagal. Harap periksa Kolom 7 Excel dan urutan data.")
+        return
+
+    keterangan_list = keterangan_list_global 
+
+    print("Mengeksekusi program...")
+    print("=" * 50)
+
+    try:
+        if sort_order == "Descending":
+            keterangan_list.reverse()
+            print("Urutan keterangan dari Bawah ke Atas (Descending).")
+        else:
+            print("Urutan keterangan dari Atas ke Bawah (Ascending).")
+        
+        pdf_writer = PdfWriter()
+        keterangan_index = 0
+
+        # Iterasi melalui setiap file PDF
+        for pdf_input_path in pdf_input_paths:
+            print(f"Memproses file: {os.path.basename(pdf_input_path)}...")
+
+            try:
+                pdf_reader = PdfReader(pdf_input_path)
+            except Exception as e:
+                print(f"Peringatan: Gagal memuat file {os.path.basename(pdf_input_path)}. Melewati file ini. Error: {e}")
+                continue
+
+            # Hanya perlu mendapatkan tinggi halaman dari halaman pertama PDF pertama
+            if 'page_height' not in locals():
+                page_height = float(pdf_reader.pages[0].mediabox.height)
+
+            for i, page in enumerate(pdf_reader.pages):
+                if keterangan_index >= len(keterangan_list):
+                    print(f"Peringatan: Keterangan Excel habis di Halaman {i+1} dari {os.path.basename(pdf_input_path)}. Berhenti memproses halaman PDF.")
+                    break
+
+                keterangan_asli = keterangan_list[keterangan_index]
+                keterangan_index += 1
+                
+                packet = io.BytesIO()
+                can = canvas.Canvas(packet, pagesize=A4)
+
+                # --- LOGIKA REPORTLAB UNTUK OVERLAY ---
+                x_pos_center = 258
+                y_pos_from_top = 190
+                y_pos_from_bottom = page_height - y_pos_from_top
+
+                can.saveState()
+                
+                # --- PENGATURAN KUSTOM DITERAPKAN (BERDASARKAN SAVED INFO) ---
+                font_size = 9 
+                can.setFont("Helvetica-Bold", font_size)
+                max_line_width = 300 
+                # ------------------------------------
+
+                words = keterangan_asli.split(' ')
+                lines = []
+                current_line = ""
+                for word in words:
+                    if not current_line and can.stringWidth(word, "Helvetica-Bold", font_size) >= max_line_width:
+                        lines.append(word) 
+                        current_line = ""
+                        continue
+                        
+                    if can.stringWidth(current_line + " " + word, "Helvetica-Bold", font_size) < max_line_width:
+                        current_line += " " + word
+                    else:
+                        lines.append(current_line.strip())
+                        current_line = word
+                lines.append(current_line.strip())
+
+                text_block_height = len(lines) * can._leading
+                initial_y_pos = y_pos_from_bottom + (text_block_height / 2)
+
+                # Cetak KETERANGAN BARANG (Diputar 90 derajat)
+                can.translate(x_pos_center, initial_y_pos)
+                can.rotate(90)
+                
+                for j, line in enumerate(lines):
+                    line_width = can.stringWidth(line, "Helvetica-Bold", font_size)
+                    can.drawString(-line_width / 2, j * -can._leading, line)
+                
+                can.restoreState()
+                
+                can.save()
+                # --- AKHIR LOGIKA REPORTLAB ---
+
+                packet.seek(0)
+                new_pdf = PdfReader(packet)
+                page.merge_page(new_pdf.pages[0])
+                pdf_writer.add_page(page)
+            
+            if keterangan_index >= len(keterangan_list):
+                break # Berhenti iterasi file jika data Excel sudah habis
+
+        
+        with open(pdf_output_path, 'wb') as f:
+            pdf_writer.write(f)
+
+        print(f"\nOperasi selesai. File hasil disimpan sebagai '{os.path.basename(pdf_output_path)}'.")
+        messagebox.showinfo("Selesai", f"Operasi selesai. File hasil disimpan sebagai '{os.path.basename(pdf_output_path)}'.")
+
+    except Exception as e:
+        print(f"\nTerjadi kesalahan: {e}")
+        messagebox.showerror("Kesalahan", f"Terjadi kesalahan: {e}")
+
+
+# --- SETUP GUI ---
+def create_ui():
+    global pdf_path_label, output_text, excel_count_label, pdf_count_label, last_excel_modified_time, status_label_count, status_label_resi, sort_var, pdf_list_display
+    
+    root = tk.Tk()
+    root.title("Alat Input Keterangan Resi")
+    
+    APP_BG = '#e6f0ff'
+    STATUS_BOX_BG = 'white' 
+    STATUS_BOX_RELIEF = 'sunken' 
+    STATUS_FRAME_BG = "#d1eef3" 
+
+    root.configure(bg=APP_BG)
+
+    style = ttk.Style()
+    style.configure('TFrame', background=APP_BG)
+    style.configure('TLabel', background=APP_BG, font=('Helvetica', 10, 'normal'))
+    style.configure('TButton', font=('Helvetica', 9, 'normal'), padding=5)
+    style.configure('TRadiobutton', background=APP_BG, font=('Helvetica', 10, 'normal'), padding=5)
+    style.configure('Step.TLabel', background=APP_BG, font=('Helvetica', 12, 'bold'))
+    style.configure('Header.TLabel', background=APP_BG, font=('Helvetica', 16, 'bold'))
+    style.configure('Start.TButton', font=('Helvetica', 12, 'bold'), background='#00cc66')
+    style.map('Start.TButton', background=[('active', '#00b359')])
+
+    main_frame = ttk.Frame(root, padding=20)
+    main_frame.pack(fill=tk.BOTH, expand=True)
+
+    header_label = ttk.Label(main_frame, text="ResiText", style='Header.TLabel')
+    header_label.pack(pady=(0, 20))
+
+    # --- FRAME UTAMA UNTUK STEP 1, 2, & 3 (Menggunakan Grid) ---
+    top_grid_frame = ttk.Frame(main_frame)
+    top_grid_frame.pack(fill=tk.X, pady=(0, 20))
+    
+    # Kolom 0: Step 1 (Urutan) | Kolom 2: Step 2 (Excel) | Kolom 4: Step 3 (PDF)
+    top_grid_frame.columnconfigure(0, weight=1) 
+    top_grid_frame.columnconfigure(2, weight=1) 
+    top_grid_frame.columnconfigure(4, weight=1) 
+
+    # --- STEP 1: PILIHAN URUTAN (Kolom 0) ---
+    sort_var = tk.StringVar(value="Ascending") 
+    step1_frame = ttk.Frame(top_grid_frame)
+    step1_frame.grid(row=0, column=0, padx=10, sticky='nwes')
+    # Label di center
+    ttk.Label(step1_frame, text="Step 1: Jenis Urutan Data", style='Step.TLabel').pack(pady=(0, 10), anchor='center') 
+    # Wrap radio buttons in a frame to center them
+    radio_frame1 = ttk.Frame(step1_frame)
+    radio_frame1.pack(anchor='center', pady=(5, 10))
+
+    asc_radio = ttk.Radiobutton(radio_frame1, text="Ascending (7-Eleven)", variable=sort_var, value="Ascending", command=change_sort_order)
+    asc_radio.pack(anchor='w', pady=(0, 5)) 
+    
+    desc_radio = ttk.Radiobutton(radio_frame1, text="Descending (Family-Mart)", variable=sort_var, value="Descending", command=change_sort_order)
+    desc_radio.pack(anchor='w', pady=(0, 0)) 
+    
+    # --- GARIS TEGAK 1 (Kolom 1) ---
+    ttk.Separator(top_grid_frame, orient='vertical').grid(row=0, column=1, sticky='ns', padx=10)
+
+
+    # --- STEP 2: EXCEL DATA (Kolom 2) ---
+    step2_frame = ttk.Frame(top_grid_frame)
+    step2_frame.grid(row=0, column=2, padx=10, sticky='nwes')
+    # Label di center
+    ttk.Label(step2_frame, text="Step 2: Excel Data", style='Step.TLabel').pack(pady=(0, 10), anchor='center')
+    
+    # Wrap content in a sub-frame to center it
+    excel_content_frame = ttk.Frame(step2_frame)
+    excel_content_frame.pack(anchor='center')
+    
+    excel_name = os.path.basename(get_excel_filename()) if get_excel_filename() else "x.xlsx (Tidak Ditemukan)"
+    ttk.Label(excel_content_frame, text=f"File Excel Ditemukan: {excel_name}").pack(pady=(0, 5), anchor='w')
+    
+    edit_excel_label = ttk.Label(excel_content_frame, text="Edit file Excel", foreground="#0000ff", cursor="hand2")
+    edit_excel_label.pack(pady=(5, 10), anchor='w')
+    edit_excel_label.bind("<Button-1>", lambda e: edit_excel_file())
+
+    ttk.Label(excel_content_frame, text="Total Baris Data:").pack(pady=(10, 2), anchor='w')
+    excel_count_box = tk.Frame(excel_content_frame, bg=STATUS_BOX_BG, relief=STATUS_BOX_RELIEF, borderwidth=1, width=150, height=30)
+    excel_count_box.pack(anchor='w')
+    excel_count_box.pack_propagate(False) 
+    excel_count_label = tk.Label(excel_count_box, text="0", 
+                                 fg='black', bg=STATUS_BOX_BG, font=('Helvetica', 12, 'normal'), 
+                                 anchor='center', justify=tk.CENTER)
+    excel_count_label.pack(expand=True, fill='both') 
+
+    # --- GARIS TEGAK 2 (Kolom 3) ---
+    ttk.Separator(top_grid_frame, orient='vertical').grid(row=0, column=3, sticky='ns', padx=10)
+
+
+    # --- STEP 3: PILIH RESI PDF (Kolom 4) ---
+    step3_frame = ttk.Frame(top_grid_frame)
+    step3_frame.grid(row=0, column=4, padx=10, sticky='nwes')
+    
+    # Label Header
+    ttk.Label(step3_frame, text="Step 3: Pilih Resi PDF", style='Step.TLabel').pack(pady=(0, 10), anchor='center')
+    
+    # Frame untuk menampung elemen-elemen agar mudah di-center
+    pdf_controls_frame = ttk.Frame(step3_frame)
+    pdf_controls_frame.pack(anchor='center', fill='x', padx=10)
+
+    # 1. Keterangan status file yang dipilih (Pusat)
+    pdf_path_label = ttk.Label(pdf_controls_frame, text="Tidak ada file yang dipilih")
+    pdf_path_label.pack(pady=(5, 5), anchor='center') 
+    
+    # 2. Frame untuk tombol ADD (Pusat)
+    pdf_input_frame = ttk.Frame(pdf_controls_frame)
+    pdf_input_frame.pack(pady=5, anchor='center') 
+    
+    # Tombol Add PDF
+    ttk.Button(pdf_input_frame, text="Add PDF(s)", command=choose_pdf_file, style='TButton').pack(side=tk.LEFT)
+    
+    # BARU: Widget untuk menampilkan daftar nama file PDF
+    ttk.Label(pdf_controls_frame, text="Daftar File Dipilih:").pack(pady=(10, 2), anchor='w')
+    
+    # Frame untuk ScrolledText dan Tombol Atur Urutan
+    list_and_control_frame = ttk.Frame(pdf_controls_frame)
+    list_and_control_frame.pack(fill=tk.X, expand=True)
+
+    pdf_list_display = ScrolledText(list_and_control_frame, height=5, width=40, state='disabled', wrap=tk.WORD, relief='sunken', borderwidth=1)
+    pdf_list_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    pdf_list_display.bind('<Button-1>', get_selected_pdf_index) # Bind klik mouse untuk memilih item
+
+    # Frame untuk tombol Up/Down
+    order_buttons_frame = ttk.Frame(list_and_control_frame)
+    order_buttons_frame.pack(side=tk.RIGHT, padx=(5, 0))
+
+    ttk.Button(order_buttons_frame, text="▲ Up", command=move_pdf_up).pack(fill=tk.X, pady=2)
+    ttk.Button(order_buttons_frame, text="▼ Down", command=move_pdf_down).pack(fill=tk.X, pady=2)
+    
+    
+    # Keterangan Total Halaman PDF (CENTERED)
+    ttk.Label(pdf_controls_frame, text="Total Halaman PDF:").pack(pady=(10, 2), anchor='center')
+    # Kotak hitungan di-center menggunakan anchor='center' pada frame penampung
+    pdf_count_box = tk.Frame(pdf_controls_frame, bg=STATUS_BOX_BG, relief=STATUS_BOX_RELIEF, borderwidth=1, width=150, height=30)
+    pdf_count_box.pack(anchor='center') 
+    pdf_count_box.pack_propagate(False) 
+    pdf_count_label = tk.Label(pdf_count_box, text="0", 
+                                 fg='black', bg=STATUS_BOX_BG, font=('Helvetica', 12, 'normal'), 
+                                 anchor='center', justify=tk.CENTER) 
+    pdf_count_label.pack(expand=True, fill='both')
+    
+    # --------------------------------------------------------------------------
+    
+    # --- COMMAND SIMPLE KECIL DI ATAS START ---
+    step_status_frame = tk.Frame(main_frame, bg=STATUS_FRAME_BG, relief='groove', borderwidth=1, padx=10, pady=5)
+    step_status_frame.pack(pady=(10, 15), fill=tk.X)
+    
+    ttk.Label(step_status_frame, text="Pengecekan Status:", font=('Helvetica', 10, 'bold'), background=STATUS_FRAME_BG).pack(anchor='w')
+    
+    status_label_count = ttk.Label(step_status_frame, text="1. Baris Data (Excel) dan Halaman (PDF) ⚪", background=STATUS_FRAME_BG)
+    status_label_count.pack(anchor='w')
+    
+    status_label_resi = ttk.Label(step_status_frame, text="2. Pengecekan Nomor Resi (Kolom 7) ⚪", background=STATUS_FRAME_BG)
+    status_label_resi.pack(anchor='w')
+    # -------------------------------------------------
+
+    start_button = ttk.Button(main_frame, text="Start", command=lambda: start_process(sort_var.get()), style='Start.TButton')
+    start_button.pack(pady=(10, 20), ipadx=50)
+
+    ttk.Label(main_frame, text="Output Program :").pack(pady=(0, 5), anchor='w')
+    output_text = ScrolledText(main_frame, height=10, width=70, state='disabled', relief='sunken', borderwidth=2)
+    output_text.pack(fill=tk.BOTH, expand=True)
+    
+    sys.stdout = TextRedirector(output_text, "stdout")
+    sys.stderr = TextRedirector(output_text, "stderr")
+
+    # Inisialisasi hitungan baris Excel saat startup
+    excel_path_init = get_excel_filename()
+    if excel_path_init:
+        try:
+            df_init = pd.read_excel(excel_path_init, header=None)
+            valid_rows = df_init.iloc[:, 0].dropna().shape[0]
+            update_excel_count_label(valid_rows)
+            last_excel_modified_time = os.path.getmtime(excel_path_init)
+        except Exception as e:
+            print(f"Peringatan: Gagal memuat/menghitung Excel saat startup: {e}")
+            update_excel_count_label(0)
+    
+    update_check_status_display(False, False)
+    update_pdf_list_display([]) 
+    
+    check_excel_modified(root) 
+    
+    credit_label = ttk.Label(root, text="© didk_", font=('Helvetica', 8, 'italic'), background=APP_BG, foreground='#666666')
+    credit_label.place(relx=0.0, rely=1.0, anchor='sw', x=10, y=0)
+    
+    root.mainloop()
+
+# Jalankan UI
+if __name__ == '__main__':
+    create_ui()
