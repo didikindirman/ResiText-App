@@ -31,6 +31,9 @@ status_label_resi = None
 sort_var = None 
 pdf_list_display = None 
 current_selected_pdf_index = -1 
+check_resi_var = None 
+# BARU: Global referensi untuk widget Checkbutton
+resi_check_box_widget = None 
 
 
 # --- FUNGSI REDIRECT OUTPUT ---
@@ -169,12 +172,30 @@ def move_pdf_down():
         print("Harap pilih file dari daftar terlebih dahulu.")
 # --- AKHIR FUNGSI MANIPULASI URUTAN PDF ---
 
+# BARU: FUNGSI UNTUK MENGAKTIFKAN/MENONAKTIFKAN CHECKBOX
+def toggle_resi_checkbox():
+    global sort_var, resi_check_box_widget, check_resi_var
+    
+    if resi_check_box_widget is None:
+        return
+        
+    current_sort = sort_var.get()
+    
+    if current_sort == "Descending":
+        # Nonaktifkan Checkbox, dan atur nilainya menjadi 0 (tidak dicentang)
+        resi_check_box_widget.config(state=tk.DISABLED)
+        check_resi_var.set(0) 
+        print("Urutan Descending (Family-Mart) dipilih.")
+    else:
+        # Aktifkan Checkbox untuk Ascending
+        resi_check_box_widget.config(state=tk.NORMAL)
+        print("Urutan Ascending (7-Eleven) dipilih. Pengecekan Nomor Resi Diaktifkan.")
 
 # --- FUNGSI UPDATE TAMPILAN STATUS ---
 def update_check_status_display(match_count, match_resi):
-    global status_label_count, status_label_resi, pdf_file_path_list, sort_var
+    global status_label_count, status_label_resi, pdf_file_path_list, sort_var, check_resi_var
 
-    if sort_var is None:
+    if sort_var is None or check_resi_var is None:
         return
 
     if not pdf_file_path_list: 
@@ -188,11 +209,16 @@ def update_check_status_display(match_count, match_resi):
         status_label_count.config(text="1. Baris Data dan Halaman TIDAK sama 🚨", foreground="red")
 
     if match_count: 
+        is_resi_check_enabled = check_resi_var.get() == 1
+        
         if sort_var.get() == "Ascending":
-            if match_resi:
-                status_label_resi.config(text="2. Nomor Resi (5 Digit Terakhir) Sesuai ✅", foreground="green")
+            if is_resi_check_enabled:
+                if match_resi:
+                    status_label_resi.config(text="2. Nomor Resi (5 Digit Terakhir) Sesuai ✅", foreground="green")
+                else:
+                    status_label_resi.config(text="2. Nomor Resi TIDAK Sesuai 🚨", foreground="red")
             else:
-                status_label_resi.config(text="2. Nomor Resi TIDAK Sesuai 🚨", foreground="red")
+                status_label_resi.config(text="2. Pengecekan Nomor Resi Diabaikan 🟡", foreground="orange")
         else:
             status_label_resi.config(text="2. Urutan Descending dipilih (Resi OK) ✅", foreground="green")
     else:
@@ -337,20 +363,20 @@ def extract_resi_number_from_pdf(pdf_path, page_num):
 
 # --- FUNGSI PENGECEKAN KESEIMBANGAN AWAL (Memuat Data Kolom 3) ---
 def check_on_select(pdf_paths, show_print=True):
-    global is_count_match, is_resi_match, keterangan_data_global
+    global is_count_match, is_resi_match, keterangan_data_global, check_resi_var
     
     is_count_match = False
-    is_resi_match = True 
+    is_resi_match = True # Default true, kecuali jika divalidasi dan gagal
     keterangan_data_global = None
     excel_path = get_excel_filename()
 
     if not excel_path or not pdf_paths:
+        is_resi_match = False
         return False
 
 
     try:
         # 1. Memuat Data dari Kolom 1 (indeks 0) dan Kolom 3 (indeks 2)
-        # Tambahkan kolom 3 ke dalam pembacaan
         df = pd.read_excel(excel_path, header=None, usecols=[0, 2]) 
         
         # Bersihkan dan siapkan data (Kolom 1 - Keterangan Barang)
@@ -363,7 +389,7 @@ def check_on_select(pdf_paths, show_print=True):
         
         jumlah_keterangan_excel = len(keterangan_list)
         
-        # Gabungkan data menjadi list of tuples/list of lists: [(kolom1_data, kolom3_data), ...]
+        # Gabungkan data menjadi list of lists: [(kolom1_data, kolom3_data), ...]
         keterangan_data_global = list(zip(keterangan_list, kolom3_list))
 
         # 2. Hitung Total Halaman PDF dari SEMUA file
@@ -390,9 +416,17 @@ def check_on_select(pdf_paths, show_print=True):
             if show_print:
                 print(f"[STATUS] SUKSES: Jumlah baris data dan halaman SAMA PERSIS.")
 
-            if sort_var.get() == "Ascending":
+            # Logika Validasi Resi Baru
+            is_resi_check_enabled = check_resi_var.get() == 1
+            if sort_var.get() == "Ascending" and is_resi_check_enabled:
                 is_resi_match = validate_resi_number(pdf_paths, excel_path)
+            elif sort_var.get() == "Ascending" and not is_resi_check_enabled:
+                 # Diabaikan, anggap true
+                 is_resi_match = True
+                 if show_print:
+                     print("[STATUS] Pengecekan Nomor Resi DIIBAIKAN oleh pengguna.")
             else:
+                # Descending/Family Mart selalu OK
                 is_resi_match = True 
 
         else:
@@ -456,6 +490,9 @@ def choose_pdf_file():
 
 
 def change_sort_order(event=None):
+    # Panggil fungsi toggle untuk mengontrol status checkbox
+    toggle_resi_checkbox() 
+    
     if pdf_file_path_list:
         check_on_select(pdf_file_path_list, show_print=True)
     else:
@@ -464,7 +501,7 @@ def change_sort_order(event=None):
 
 # Fungsi untuk memulai proses utama
 def start_process(sort_order):
-    global pdf_file_path_list, is_count_match, is_resi_match
+    global pdf_file_path_list, is_count_match, is_resi_match, check_resi_var
 
     output_text.delete(1.0, tk.END)
 
@@ -472,10 +509,17 @@ def start_process(sort_order):
         messagebox.showerror("Kesalahan", "Harap pilih minimal satu file PDF terlebih dahulu.")
         return
     
+    # Lakukan pengecekan akhir sebelum memulai proses
     if not check_on_select(pdf_file_path_list, show_print=True):
-        messagebox.showerror("Kesalahan", "Pengecekan Status GAGAL. Periksa Output Program untuk detail.")
+        messagebox.showerror("Kesalahan", "Pengecekan Keseimbangan GAGAL. Periksa Output Program untuk detail.")
         return
 
+    # Validasi Tambahan (Hanya cek Resi jika Ascending DAN Checkbox dicentang)
+    is_resi_check_enabled = check_resi_var.get() == 1
+    if sort_order == "Ascending" and is_resi_check_enabled and not is_resi_match:
+        messagebox.showerror("Kesalahan", "Pengecekan Nomor Resi GAGAL. Harap periksa Kolom 7 Excel Anda.")
+        return
+        
     # --- LOGIKA PENAMAAN FILE OUTPUT ---
     first_file_path = pdf_file_path_list[0]
     first_file_name_base = os.path.basename(first_file_path)
@@ -505,15 +549,18 @@ def start_process(sort_order):
 # --- FUNGSI PROSES UTAMA (Menambahkan Teks Khusus) ---
 def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
     # Diperbarui: menggunakan keterangan_data_global
-    global keterangan_data_global, is_count_match, is_resi_match
+    global keterangan_data_global, is_count_match, is_resi_match, check_resi_var
 
+    # Pengecekan ulang sebelum memulai
     if not is_count_match:
         messagebox.showerror("Kesalahan", "Pengecekan Keseimbangan Gagal.")
         return
-
-    if sort_order == "Ascending" and not is_resi_match:
+    
+    is_resi_check_enabled = check_resi_var.get() == 1
+    if sort_order == "Ascending" and is_resi_check_enabled and not is_resi_match:
         messagebox.showerror("Kesalahan", "Pengecekan Resi Gagal.")
         return
+
 
     keterangan_data = keterangan_data_global 
 
@@ -533,7 +580,7 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
         # --- PENGATURAN FONT KUSTOM ---
         FONT_NORMAL = "Helvetica-Bold"
         FONT_SIZE_NORMAL = 9  # Ukuran default 
-        FONT_SIZE_NUMBER = 14 # Ukuran khusus untuk angka murni
+        FONT_SIZE_NUMBER = 12 # Ukuran khusus untuk angka murni
         MAX_LINE_WIDTH = 300
         LINE_SPACING = FONT_SIZE_NORMAL + 1 # Jarak antar baris
         # -----------------------------
@@ -563,7 +610,7 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 keterangan_final = keterangan_barang_asli
                 # Cek apakah angka '60' ada di data_kolom3_asli (menggunakan string)
                 if '60' in str(data_kolom3_asli):
-                    teks_khusus = "!!! SELIPKAN 60NT !!!  "
+                    teks_khusus = "(SELIPKAN 60 NT) "
                     print(f" -> Deteksi '60' di Kolom 3 (Halaman {i+1}): Menambahkan '{teks_khusus.strip()}'")
                     keterangan_final = teks_khusus + keterangan_barang_asli
                 # -----------------------------------------------------------
@@ -572,7 +619,7 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 packet = io.BytesIO()
                 can = canvas.Canvas(packet, pagesize=A4)
 
-                x_pos_center = 260
+                x_pos_center = 258
                 y_pos_from_top = 190
                 y_pos_from_bottom = page_height - y_pos_from_top
 
@@ -665,7 +712,7 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
 
         print(f"\nOperasi selesai. File hasil disimpan sebagai '{os.path.basename(pdf_output_path)}'.")
         
-        # --- BUKA FILE OTOMATIS (Sesuai Permintaan User) ---
+        # --- BUKA FILE OTOMATIS (AKTIF) ---
         open_file_in_os(pdf_output_path)
         # ---------------------------
 
@@ -678,7 +725,7 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
 
 # --- SETUP GUI ---
 def create_ui():
-    global pdf_path_label, output_text, excel_count_label, pdf_count_label, last_excel_modified_time, status_label_count, status_label_resi, sort_var, pdf_list_display
+    global pdf_path_label, output_text, excel_count_label, pdf_count_label, last_excel_modified_time, status_label_count, status_label_resi, sort_var, pdf_list_display, check_resi_var, resi_check_box_widget
     
     root = tk.Tk()
     root.title("Alat Input Keterangan Resi")
@@ -695,6 +742,7 @@ def create_ui():
     style.configure('TLabel', background=APP_BG, font=('Helvetica', 10, 'normal'))
     style.configure('TButton', font=('Helvetica', 9, 'normal'), padding=5)
     style.configure('TRadiobutton', background=APP_BG, font=('Helvetica', 10, 'normal'), padding=5)
+    style.configure('TCheckbutton', background=APP_BG, font=('Helvetica', 10, 'normal')) # Gaya untuk Checkbox
     style.configure('Step.TLabel', background=APP_BG, font=('Helvetica', 12, 'bold'))
     style.configure('Header.TLabel', background=APP_BG, font=('Helvetica', 16, 'bold'))
     style.configure('Start.TButton', font=('Helvetica', 12, 'bold'), background='#00cc66')
@@ -713,19 +761,35 @@ def create_ui():
     top_grid_frame.columnconfigure(2, weight=1) 
     top_grid_frame.columnconfigure(4, weight=1) 
 
-    # --- STEP 1: PILIHAN URUTAN (Kolom 0) ---
+    # --- STEP 1: PILIHAN URUTAN & CHECKBOX (Kolom 0) ---
     sort_var = tk.StringVar(value="Ascending") 
+    check_resi_var = tk.IntVar(value=1) # Default dicentang
+    
     step1_frame = ttk.Frame(top_grid_frame)
     step1_frame.grid(row=0, column=0, padx=10, sticky='nwes')
-    ttk.Label(step1_frame, text="Step 1: Jenis Urutan Data", style='Step.TLabel').pack(pady=(0, 10), anchor='center') 
+    ttk.Label(step1_frame, text="Step 1: Jenis Urutan Data & Opsi", style='Step.TLabel').pack(pady=(0, 10), anchor='center') 
+    
     radio_frame1 = ttk.Frame(step1_frame)
-    radio_frame1.pack(anchor='center', pady=(5, 10))
+    radio_frame1.pack(anchor='w', pady=(5, 10), padx=20) 
 
+    # Radio Button untuk Ascending
     asc_radio = ttk.Radiobutton(radio_frame1, text="Ascending (7-Eleven)", variable=sort_var, value="Ascending", command=change_sort_order)
     asc_radio.pack(anchor='w', pady=(0, 5)) 
     
+    # Radio Button untuk Descending
     desc_radio = ttk.Radiobutton(radio_frame1, text="Descending (Family-Mart)", variable=sort_var, value="Descending", command=change_sort_order)
-    desc_radio.pack(anchor='w', pady=(0, 0)) 
+    desc_radio.pack(anchor='w', pady=(0, 10)) 
+    
+    # Checkbox untuk Validasi Resi
+    resi_check_box = ttk.Checkbutton(step1_frame, 
+                                     text="Cek No. Resi 7-Eleven", 
+                                     variable=check_resi_var,
+                                     command=change_sort_order,
+                                     style='TCheckbutton')
+    resi_check_box.pack(anchor='w', padx=20, pady=(0, 5))
+    
+    # BARU: Simpan referensi widget untuk dikontrol oleh toggle_resi_checkbox
+    resi_check_box_widget = resi_check_box 
     
     ttk.Separator(top_grid_frame, orient='vertical').grid(row=0, column=1, sticky='ns', padx=10)
 
@@ -833,6 +897,10 @@ def create_ui():
         except Exception as e:
             print(f"Peringatan: Gagal memuat/menghitung Excel saat startup: {e}")
             update_excel_count_label(0)
+    
+    
+    # Panggil fungsi toggle untuk inisialisasi status checkbox saat startup
+    toggle_resi_checkbox()
     
     update_check_status_display(False, False)
     update_pdf_list_display([]) 
