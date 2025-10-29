@@ -34,6 +34,7 @@ current_selected_pdf_index = -1
 check_resi_var = None 
 # BARU: Global referensi untuk widget Checkbutton
 resi_check_box_widget = None 
+open_file_var = None
 
 
 # --- FUNGSI REDIRECT OUTPUT ---
@@ -52,19 +53,14 @@ class TextRedirector(object):
         pass
 
 # --- FUNGSI UTILITY (DIGUNAKAN UNTUK AUTO-OPEN) ---
-def open_file_in_os(file_path):
-    """Membuka file di sistem operasi default."""
-    try:
-        if platform.system() == 'Darwin':       # macOS
-            subprocess.call(('open', file_path))
-        elif platform.system() == 'Windows':    # Windows
-            os.startfile(file_path)
-        else:                                   # Linux
-            subprocess.call(('xdg-open', file_path))
-    except FileNotFoundError:
-        messagebox.showerror("Kesalahan", "Aplikasi default untuk membuka file tidak ditemukan.")
-    except Exception as e:
-        messagebox.showerror("Kesalahan", f"Terjadi kesalahan saat mencoba membuka file: {e}")
+def open_file_in_os(path):
+    """Membuka file menggunakan program default OS."""
+    if os.name == 'nt': # Windows
+        os.startfile(path)
+    elif os.uname().sysname == 'Darwin': # macOS
+        os.system(f"open {path}")
+    else: # Linux/Unix
+        os.system(f"xdg-open {path}")
 
 def get_excel_filename():
     excel_files = glob.glob('*.xlsx') + glob.glob('*.xls')
@@ -374,25 +370,45 @@ def check_on_select(pdf_paths, show_print=True):
         is_resi_match = False
         return False
 
-
     try:
-        # 1. Memuat Data dari Kolom 1 (indeks 0) dan Kolom 3 (indeks 2)
-        df = pd.read_excel(excel_path, header=None, usecols=[0, 2]) 
+        # TAHAP 1: MEMBACA HANYA KOLOM A (Keterangan Barang) untuk validasi minimum
+        # Ini akan selalu aman asalkan ada kolom A.
+        df_keterangan = pd.read_excel(excel_path, header=None, usecols=[0])
         
         # Bersihkan dan siapkan data (Kolom 1 - Keterangan Barang)
-        keterangan_list = [str(item).replace('\n', ' ') for item in df.iloc[:, 0].dropna().tolist()]
-        # Bersihkan dan siapkan data (Kolom 3 - Data Tambahan/Selip)
-        kolom3_list = [str(item).replace('\n', ' ') for item in df.iloc[:, 1].fillna('').tolist()]
-        
-        # Pastikan panjang kolom 1 dan 3 sama (hanya untuk data yang sudah di dropna() di kolom 1)
-        kolom3_list = kolom3_list[:len(keterangan_list)]
+        keterangan_series = df_keterangan.iloc[:, 0].dropna() # Hanya baris non-NaN di kolom 1 yang dipakai
+        keterangan_list = [str(item).replace('\n', ' ') for item in keterangan_series.tolist()]
         
         jumlah_keterangan_excel = len(keterangan_list)
         
-        # Gabungkan data menjadi list of lists: [(kolom1_data, kolom3_data), ...]
+        # TAHAP 2: MEMBACA KOLOM C (Kolom 3) secara OPSIONAL
+        kolom3_list = [''] * jumlah_keterangan_excel # Default: list string kosong
+        
+        try:
+            # Coba baca Kolom C (indeks 2)
+            df_kolom3 = pd.read_excel(excel_path, header=None, usecols=[2])
+            
+            # Kolom 3 yang dibaca ada di indeks 0 dari df_kolom3
+            kolom3_series = df_kolom3.iloc[:jumlah_keterangan_excel, 0].fillna('')
+            kolom3_list = [str(item).replace('\n', ' ') for item in kolom3_series.tolist()]
+
+            if show_print:
+                print("✅ Kolom 3 (Data Selip) ditemukan dan dimuat.")
+                
+        except ValueError as ve:
+            # Error ini terjadi jika usecols=[2] out-of-bounds (Kolom C tidak ada)
+            if "out-of-bounds indices" in str(ve) or "does not exist" in str(ve):
+                if show_print:
+                    print("⚠️ Peringatan: Kolom 3 (Notes) tidak ditemukan di Excel. Program akan mengabaikannya")
+                # kolom3_list tetap menjadi list kosong ('') seperti yang diinisialisasi
+            else:
+                # Jika ada ValueError lain, berikan error
+                raise ve
+        
+        # Gabungkan data menjadi list of tuples: [(kolom1_data, kolom3_data), ...]
         keterangan_data_global = list(zip(keterangan_list, kolom3_list))
 
-        # 2. Hitung Total Halaman PDF dari SEMUA file
+        # 3. Hitung Total Halaman PDF dari SEMUA file
         jumlah_halaman_pdf = 0
         for pdf_path in pdf_paths:
             try:
@@ -405,6 +421,7 @@ def check_on_select(pdf_paths, show_print=True):
         update_excel_count_label(jumlah_keterangan_excel)
         update_pdf_count_label(jumlah_halaman_pdf)
 
+        # 4. Logika Pengecekan Keseimbangan (sisanya sama)
         if show_print:
             print("\n" + "=" * 50)
             print(f"✅ Pengecekan Keseimbangan Data...")
@@ -416,17 +433,17 @@ def check_on_select(pdf_paths, show_print=True):
             if show_print:
                 print(f"[STATUS] SUKSES: Jumlah baris data dan halaman SAMA PERSIS.")
 
-            # Logika Validasi Resi Baru
+            # Logika Validasi Resi (Kolom B/7) 
             is_resi_check_enabled = check_resi_var.get() == 1
             if sort_var.get() == "Ascending" and is_resi_check_enabled:
+                # Asumsi fungsi validate_resi_number ada di script Anda dan bekerja dengan Kolom 7
+                # NOTE: Karena kita hanya membaca Kolom A dan C, Kolom 7 (G) harus dibaca di dalam validate_resi_number.
                 is_resi_match = validate_resi_number(pdf_paths, excel_path)
             elif sort_var.get() == "Ascending" and not is_resi_check_enabled:
-                 # Diabaikan, anggap true
                  is_resi_match = True
                  if show_print:
                      print("[STATUS] Pengecekan Nomor Resi DIIBAIKAN oleh pengguna.")
             else:
-                # Descending/Family Mart selalu OK
                 is_resi_match = True 
 
         else:
@@ -444,7 +461,7 @@ def check_on_select(pdf_paths, show_print=True):
             print("=" * 50)
             
         update_check_status_display(is_count_match, is_resi_match)
-        return is_count_match and is_resi_match
+        return is_count_match 
 
     except Exception as e:
         update_excel_count_label(0)
@@ -453,9 +470,15 @@ def check_on_select(pdf_paths, show_print=True):
         is_resi_match = False
         update_check_status_display(False, False)
         if show_print:
-            print(f"\n[STATUS] ERROR: Terjadi kesalahan saat pengecekan file: {e}")
-            messagebox.showerror("Kesalahan Pengecekan", f"Terjadi kesalahan saat memuat data: {e}")
+            # Periksa jika error bukan karena usecols out-of-bounds (yang sudah diatasi)
+            if "out-of-bounds indices" in str(e):
+                 print(f"\n[STATUS] ERROR FATAL: Kesalahan indeks yang tidak terduga: {e}")
+                 messagebox.showerror("Kesalahan Pengecekan", "Kesalahan internal indeks Excel yang tidak terduga.")
+            else:
+                 print(f"\n[STATUS] ERROR: Terjadi kesalahan saat pengecekan file: {e}")
+                 messagebox.showerror("Kesalahan Pengecekan", f"Terjadi kesalahan saat memuat data: {e}")
         return False
+
 
 
 # Fungsi untuk memilih file PDF (REVERSE URUTAN)
@@ -501,7 +524,7 @@ def change_sort_order(event=None):
 
 # Fungsi untuk memulai proses utama
 def start_process(sort_order):
-    global pdf_file_path_list, is_count_match, is_resi_match, check_resi_var, open_file_var # <<< open_file_var ditambahkan
+    global pdf_file_path_list, is_count_match, is_resi_match, check_resi_var
 
     output_text.delete(1.0, tk.END)
 
@@ -509,7 +532,7 @@ def start_process(sort_order):
         messagebox.showerror("Kesalahan", "Harap pilih minimal satu file PDF terlebih dahulu.")
         return
     
-    # --- Pengecekan Keseimbangan & Resi ---
+    # Lakukan pengecekan akhir sebelum memulai proses
     if not check_on_select(pdf_file_path_list, show_print=True):
         messagebox.showerror("Kesalahan", "Pengecekan Keseimbangan GAGAL. Periksa Output Program untuk detail.")
         return
@@ -526,7 +549,7 @@ def start_process(sort_order):
     base_name, ext = os.path.splitext(first_file_name_base)
     
     if len(pdf_file_path_list) == 1:
-        default_save_name = base_name + "_EDITED" + ext # Ganti nama default agar ada perubahan
+        default_save_name = first_file_name_base
     else:
         default_save_name = f"{base_name}_FULL{ext}"
     
@@ -543,16 +566,11 @@ def start_process(sort_order):
         print("Operasi dibatalkan oleh pengguna.")
         return
 
-    # --- PENGAMBILAN STATUS CHECKBOX BARU ---
-    is_open_file_enabled = open_file_var.get() == 1 
-    
-    # --- PANGGIL FUNGSI UTAMA DENGAN PARAMETER BARU ---
-    # Fungsi process_pdf_and_excel harus diubah untuk menerima is_open_file_enabled
-    process_pdf_and_excel(sort_order, pdf_file_path_list, save_path, is_open_file_enabled)
+    process_pdf_and_excel(sort_order, pdf_file_path_list, save_path)
+
 
 # --- FUNGSI PROSES UTAMA (Menambahkan Teks Khusus) ---
 def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
-    # Diperbarui: menggunakan keterangan_data_global
     global keterangan_data_global, is_count_match, is_resi_match, check_resi_var
 
     # Pengecekan ulang sebelum memulai
@@ -584,7 +602,7 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
         # --- PENGATURAN FONT KUSTOM ---
         FONT_NORMAL = "Helvetica-Bold"
         FONT_SIZE_NORMAL = 9  # Ukuran default 
-        FONT_SIZE_NUMBER = 12 # Ukuran khusus untuk angka murni
+        FONT_SIZE_NUMBER = 18 # Ukuran khusus untuk angka murni
         MAX_LINE_WIDTH = 300
         LINE_SPACING = FONT_SIZE_NORMAL + 1 # Jarak antar baris
         # -----------------------------
@@ -614,7 +632,7 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 keterangan_final = keterangan_barang_asli
                 # Cek apakah angka '60' ada di data_kolom3_asli (menggunakan string)
                 if '60' in str(data_kolom3_asli):
-                    teks_khusus = "(SELIPKAN 60 NT) "
+                    teks_khusus = "(SELIPKAN 60 NT !!) "
                     print(f" -> Deteksi '60' di Kolom 3 (Halaman {i+1}): Menambahkan '{teks_khusus.strip()}'")
                     keterangan_final = teks_khusus + keterangan_barang_asli
                 # -----------------------------------------------------------
@@ -658,44 +676,75 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 can.translate(x_pos_center, initial_y_pos)
                 can.rotate(90)
                 
-                # --- 3. LOGIKA CETAK DENGAN FONT SIZE YANG BERBEDA ---
+                # --- 3. LOGIKA CETAK DENGAN FONT SIZE YANG BERBEDA & OFFSET VERTICAL ---
+                
+                # ReportLab mencetak dari baseline. 
+                # Offset vertikal diperlukan untuk menyeimbangkan angka besar di tengah font normal.
+                
+                # Kita hitung offset-nya: (Tinggi Font Besar - Tinggi Font Normal) / 2
+                # Note: Nilai 1.25x - 1.5x dari font size biasanya digunakan sebagai estimasi tinggi sebenarnya.
+                # Namun, kita gunakan perbedaan ukuran font sebagai dasar offset Y.
+                
+                # Offset dasar (diperoleh dari eksperimen untuk menyelaraskan tengah)
+                FONT_SIZE_DIFF = FONT_SIZE_NUMBER - FONT_SIZE_NORMAL
+                Y_ADJUSTMENT = FONT_SIZE_DIFF / 2.5 # Nilai 2.5 adalah nilai penyesuaian empiris yang bekerja baik
+
                 for j, line in enumerate(lines):
                     current_x = 0
-                    line_words = line.split(' ')
+                    
+                    # Memecah baris menjadi token: (teks, angka, (angka))
+                    # Regex: (\d+)|(\(.*?\))|([^\s\d()]+) -> Angka, Kurung, Teks
+                    # ASUMSI: import re sudah dilakukan di awal skrip.
+                    tokens = re.findall(r'(\d+)|(\(.*?\))|([^\s\d()]+)', line)
                     
                     # --- Kalkulasi Lebar untuk Centering ---
                     total_width = 0
-                    for word in line_words:
-                        # Pengecekan hanya untuk angka murni
-                        is_number = word.isdigit()
-                        calc_font_size = FONT_SIZE_NUMBER if is_number else FONT_SIZE_NORMAL
-                        
-                        total_width += can.stringWidth(word, FONT_NORMAL, calc_font_size)
-                        total_width += can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL) 
+                    word_segments = []
+
+                    # Tahap 1: Tokenisasi dan Kalkulasi Lebar
+                    for token_group in tokens:
+                        for segment in token_group:
+                            if segment: # Pastikan segmen tidak kosong
+                                is_number_only = segment.isdigit()
+                                is_in_parentheses = segment.startswith('(') and segment.endswith(')')
+                                
+                                calc_font_size = FONT_SIZE_NUMBER if is_number_only and not is_in_parentheses else FONT_SIZE_NORMAL
+                                
+                                word_segments.append({'text': segment, 'size': calc_font_size})
+                                
+                                total_width += can.stringWidth(segment, FONT_NORMAL, calc_font_size)
+                                total_width += can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL) 
                     
                     if total_width > 0:
+                        # Kurangi lebar spasi terakhir
                         total_width -= can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL) 
 
                     start_x = -total_width / 2
                     # --- Akhir Kalkulasi Lebar ---
 
-                    for k, word in enumerate(line_words):
-                        # Pengecekan hanya untuk angka murni
-                        is_number = word.isdigit()
+                    # Tahap 2: Pencetakan Berdasarkan Segmen
+                    for segment_data in word_segments:
+                        word = segment_data['text']
+                        font_size = segment_data['size']
                         
-                        # Tentukan font size: 12 jika angka murni, 9 jika bukan
-                        font_size = FONT_SIZE_NUMBER if is_number else FONT_SIZE_NORMAL
                         can.setFont(FONT_NORMAL, font_size)
 
                         word_width = can.stringWidth(word, FONT_NORMAL, font_size)
                         
-                        # Menggunakan LINE_SPACING 
+                        # --- KUNCI: Penyesuaian Posisi Y (Offset Vertikal) ---
+                        # Teks normal dicetak di baseline (0). Teks besar digeser ke bawah.
                         y_pos_in_rotation = j * -LINE_SPACING
                         
-                        # Mencetak kata dengan font size yang telah disesuaikan
-                        can.drawString(start_x + current_x, y_pos_in_rotation, word)
+                        if font_size == FONT_SIZE_NUMBER:
+                            # Terapkan offset Y negatif untuk menggeser ke bawah
+                            final_y_pos = y_pos_in_rotation - Y_ADJUSTMENT
+                        else:
+                            final_y_pos = y_pos_in_rotation
                         
-                        # Pindahkan posisi x untuk kata berikutnya
+                        # Mencetak kata/segmen dengan font size dan posisi Y yang disesuaikan
+                        can.drawString(start_x + current_x, final_y_pos, word)
+                        
+                        # Pindahkan posisi x untuk kata berikutnya, tambahkan spasi setelah kata
                         current_x += word_width + can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL)
                 
                 can.restoreState()
@@ -708,7 +757,7 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 pdf_writer.add_page(page)
             
             if keterangan_index >= len(keterangan_data):
-                break 
+                break
 
         
         with open(pdf_output_path, 'wb') as f:
@@ -729,7 +778,7 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
 
 # --- SETUP GUI ---
 def create_ui():
-    global pdf_path_label, output_text, excel_count_label, pdf_count_label, last_excel_modified_time, status_label_count, status_label_resi, sort_var, pdf_list_display, check_resi_var, resi_check_box_widget
+    global pdf_path_label, output_text, excel_count_label, pdf_count_label, last_excel_modified_time, status_label_count, status_label_resi, sort_var, pdf_list_display, check_resi_var, resi_check_box_widget, open_file_var
     
     root = tk.Tk()
     root.title("Alat Input Keterangan Resi")
@@ -746,7 +795,7 @@ def create_ui():
     style.configure('TLabel', background=APP_BG, font=('Helvetica', 10, 'normal'))
     style.configure('TButton', font=('Helvetica', 9, 'normal'), padding=5)
     style.configure('TRadiobutton', background=APP_BG, font=('Helvetica', 10, 'normal'), padding=5)
-    style.configure('TCheckbutton', background=APP_BG, font=('Helvetica', 10, 'normal')) # Gaya untuk Checkbox
+    style.configure('TCheckbutton', background=APP_BG, font=('Helvetica', 10, 'normal'))
     style.configure('Step.TLabel', background=APP_BG, font=('Helvetica', 12, 'bold'))
     style.configure('Header.TLabel', background=APP_BG, font=('Helvetica', 16, 'bold'))
     style.configure('Start.TButton', font=('Helvetica', 12, 'bold'), background='#00cc66')
@@ -767,7 +816,7 @@ def create_ui():
 
     # --- STEP 1: PILIHAN URUTAN & CHECKBOX (Kolom 0) ---
     sort_var = tk.StringVar(value="Ascending") 
-    check_resi_var = tk.IntVar(value=1) # Default dicentang
+    check_resi_var = tk.IntVar(value=1)
     
     step1_frame = ttk.Frame(top_grid_frame)
     step1_frame.grid(row=0, column=0, padx=10, sticky='nwes')
@@ -858,14 +907,40 @@ def create_ui():
     ttk.Button(order_buttons_frame, text="▼ Down", command=move_pdf_down).pack(fill=tk.X, pady=2)
     
     
-    ttk.Label(pdf_controls_frame, text="Total Halaman PDF:").pack(pady=(10, 2), anchor='center')
-    pdf_count_box = tk.Frame(pdf_controls_frame, bg=STATUS_BOX_BG, relief=STATUS_BOX_RELIEF, borderwidth=1, width=150, height=30)
-    pdf_count_box.pack(anchor='center') 
+    # Frame untuk menampung label Total Halaman dan Checkbox Buka File
+    bottom_pdf_frame = ttk.Frame(pdf_controls_frame)
+    bottom_pdf_frame.pack(fill='x', pady=(10, 5))
+    
+    
+    # Frame untuk Total Halaman PDF (Baris Atas)
+    pdf_count_wrapper_frame = ttk.Frame(bottom_pdf_frame)
+    pdf_count_wrapper_frame.pack(anchor='w', pady=(0, 5)) # Hapus fill='x', agar frame pembungkus tidak melebar
+    
+    # Label 'Total Halaman PDF:' (di sebelah kiri)
+    ttk.Label(pdf_count_wrapper_frame, text="Total Halaman PDF:").pack(side=tk.LEFT, padx=(0, 5))
+    
+    # KOTAK TOTAL HALAMAN PDF (LEBAR DITETAPKAN SEPERTI STEP 2: width=150)
+    # Gunakan lebar 150 seperti kotak Excel di Step 2 untuk konsistensi
+    # Catatan: Lebar 150 adalah estimasi dari kode Step 2 sebelumnya.
+    pdf_count_box = tk.Frame(pdf_count_wrapper_frame, bg=STATUS_BOX_BG, relief=STATUS_BOX_RELIEF, borderwidth=1, width=150, height=30) 
+    
+    # Hapus fill='x', expand=True agar tidak melebar tak terbatas
+    pdf_count_box.pack(side=tk.LEFT, anchor='w') 
     pdf_count_box.pack_propagate(False) 
     pdf_count_label = tk.Label(pdf_count_box, text="0", 
                                  fg='black', bg=STATUS_BOX_BG, font=('Helvetica', 12, 'normal'), 
                                  anchor='center', justify=tk.CENTER) 
     pdf_count_label.pack(expand=True, fill='both')
+    
+    
+    # Checkbox Buka File Otomatis (Baris Bawah)
+    open_file_var = tk.IntVar(value=0) 
+    
+    open_file_checkbox = ttk.Checkbutton(bottom_pdf_frame, 
+                                     text="Buka file setelah selesai dibuat", 
+                                     variable=open_file_var,
+                                     style='TCheckbutton')
+    open_file_checkbox.pack(anchor='w', padx=5)
     
     
     # --- COMMAND SIMPLE KECIL DI ATAS START ---
