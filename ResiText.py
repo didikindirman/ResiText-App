@@ -501,7 +501,7 @@ def change_sort_order(event=None):
 
 # Fungsi untuk memulai proses utama
 def start_process(sort_order):
-    global pdf_file_path_list, is_count_match, is_resi_match, check_resi_var
+    global pdf_file_path_list, is_count_match, is_resi_match, check_resi_var, open_file_var # <<< open_file_var ditambahkan
 
     output_text.delete(1.0, tk.END)
 
@@ -509,7 +509,7 @@ def start_process(sort_order):
         messagebox.showerror("Kesalahan", "Harap pilih minimal satu file PDF terlebih dahulu.")
         return
     
-    # Lakukan pengecekan akhir sebelum memulai proses
+    # --- Pengecekan Keseimbangan & Resi ---
     if not check_on_select(pdf_file_path_list, show_print=True):
         messagebox.showerror("Kesalahan", "Pengecekan Keseimbangan GAGAL. Periksa Output Program untuk detail.")
         return
@@ -526,7 +526,7 @@ def start_process(sort_order):
     base_name, ext = os.path.splitext(first_file_name_base)
     
     if len(pdf_file_path_list) == 1:
-        default_save_name = first_file_name_base
+        default_save_name = base_name + "_EDITED" + ext # Ganti nama default agar ada perubahan
     else:
         default_save_name = f"{base_name}_FULL{ext}"
     
@@ -543,8 +543,12 @@ def start_process(sort_order):
         print("Operasi dibatalkan oleh pengguna.")
         return
 
-    process_pdf_and_excel(sort_order, pdf_file_path_list, save_path)
-
+    # --- PENGAMBILAN STATUS CHECKBOX BARU ---
+    is_open_file_enabled = open_file_var.get() == 1 
+    
+    # --- PANGGIL FUNGSI UTAMA DENGAN PARAMETER BARU ---
+    # Fungsi process_pdf_and_excel harus diubah untuk menerima is_open_file_enabled
+    process_pdf_and_excel(sort_order, pdf_file_path_list, save_path, is_open_file_enabled)
 
 # --- FUNGSI PROSES UTAMA (Menambahkan Teks Khusus) ---
 def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
