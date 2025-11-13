@@ -15,29 +15,28 @@ import re
 import pdfplumber 
 import time 
 
-# --- VARIABEL GLOBAL GUI & STATUS ---
+# --- GLOBAL GUI & STATUS VARIABLES ---
 pdf_file_path_list = [] 
-is_name_match = False # BARU: Status Pengecekan Nama File
+is_name_match = False # NEW: File Name Check Status
 is_count_match = False
 is_resi_match = False  
-# Diperbarui: global list untuk menyimpan data Kolom 1 DAN Kolom 3
-keterangan_data_global = None 
+# Updated: global list to store Column 1 AND Column 3 data
+description_data_global = None 
 pdf_path_label = None 
 output_text = None    
 excel_count_label = None
 pdf_count_label = None
 last_excel_modified_time = 0 
-status_label_name = None # BARU: Label Status Nama File
+status_label_name = None # NEW: File Name Status Label
 status_label_count = None 
 status_label_resi = None  
 sort_var = None 
 pdf_list_display = None 
 current_selected_pdf_index = -1 
-# check_resi_var dan resi_check_box_widget DIHAPUS, karena cek resi selalu aktif untuk Ascending
 open_file_var = None
 
 
-# --- FUNGSI REDIRECT OUTPUT ---
+# --- REDIRECT OUTPUT FUNCTION ---
 class TextRedirector(object):
     def __init__(self, widget, tag="stdout"):
         self.widget = widget
@@ -52,14 +51,14 @@ class TextRedirector(object):
     def flush(self):
         pass
 
-# --- FUNGSI UTILITY (DIGUNAKAN UNTUK AUTO-OPEN) ---
-# Ditingkatkan: Menambahkan argumen force_open untuk mengabaikan status open_file_var
+# --- UTILITY FUNCTION (USED FOR AUTO-OPEN) ---
+# Enhanced: Added force_open argument to ignore the open_file_var status
 def open_file_in_os(path, force_open=False): 
-    """Membuka file menggunakan program default OS."""
+    """Opens the file using the OS default program."""
     global open_file_var 
     
-    # KUNCI PERBAIKAN: Selalu buka jika force_open=True (untuk Excel),
-    # ATAU jika open_file_var diatur dan nilainya 1 (untuk Output PDF)
+    # KEY FIX: Always open if force_open=True (for Excel),
+    # OR if open_file_var is set and its value is 1 (for Output PDF)
     should_open = force_open or (open_file_var and open_file_var.get() == 1)
     
     if should_open:
@@ -67,19 +66,19 @@ def open_file_in_os(path, force_open=False):
             try:
                 os.startfile(path)
             except Exception as e:
-                print(f"Peringatan: Gagal membuka file otomatis: {e}")
+                print(f"Warning: Failed to open file automatically: {e}")
 
-        elif platform.system() == 'Darwin': # macOS (Menggunakan platform.system() lebih robust)
+        elif platform.system() == 'Darwin': # macOS (Using platform.system() is more robust)
             try:
                 os.system(f"open {path}")
             except Exception as e:
-                print(f"Peringatan: Gagal membuka file otomatis: {e}")
+                print(f"Warning: Failed to open file automatically: {e}")
 
         else: # Linux/Unix
             try:
                 os.system(f"xdg-open {path}")
             except Exception as e:
-                print(f"Peringatan: Gagal membuka file otomatis: {e}")
+                print(f"Warning: Failed to open file automatically: {e}")
 
 
 def get_excel_filename():
@@ -89,11 +88,11 @@ def get_excel_filename():
 def edit_excel_file():
     excel_path = get_excel_filename()
     if excel_path:
-        print(f"Membuka file Excel: {os.path.basename(excel_path)}")
-        # PERBAIKAN: Memanggil open_file_in_os dengan force_open=True
+        print(f"Opening Excel file: {os.path.basename(excel_path)}")
+        # FIX: Calling open_file_in_os with force_open=True
         open_file_in_os(excel_path, force_open=True) 
     else:
-        messagebox.showerror("Kesalahan", "Tidak ada file Excel ditemukan di folder yang sama.")
+        messagebox.showerror("Error", "No Excel file found in the same folder.")
 
 def update_excel_count_label(total_rows):
     if excel_count_label:
@@ -103,7 +102,7 @@ def update_pdf_count_label(total_pages):
     if pdf_count_label:
         pdf_count_label.config(text=f"{total_pages}")
 
-# Fungsi untuk menampilkan daftar PDF yang dipilih
+# Function to display the selected PDF list
 def update_pdf_list_display(pdf_paths, highlight_index=-1):
     global pdf_list_display
     if pdf_list_display:
@@ -125,11 +124,11 @@ def update_pdf_list_display(pdf_paths, highlight_index=-1):
                     pdf_list_display.tag_add('highlight', start_index, end_index)
 
         else:
-            pdf_list_display.insert(tk.END, "Belum ada file PDF yang dipilih.")
+            pdf_list_display.insert(tk.END, "No PDF files selected yet.")
         pdf_list_display.configure(state='disabled')
 
 
-# --- FUNGSI MANIPULASI URUTAN PDF ---
+# --- PDF ORDER MANIPULATION FUNCTIONS ---
 def get_selected_pdf_index(event):
     global pdf_list_display, current_selected_pdf_index
     if not pdf_list_display:
@@ -143,7 +142,7 @@ def get_selected_pdf_index(event):
         if 0 <= selected_index < len(pdf_file_path_list):
             current_selected_pdf_index = selected_index
             update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
-            print(f"File terpilih: {os.path.basename(pdf_file_path_list[current_selected_pdf_index])} (Index: {current_selected_pdf_index})")
+            print(f"Selected File: {os.path.basename(pdf_file_path_list[current_selected_pdf_index])} (Index: {current_selected_pdf_index})")
         else:
             current_selected_pdf_index = -1
             update_pdf_list_display(pdf_file_path_list, -1)
@@ -164,11 +163,11 @@ def move_pdf_up():
         
         update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
         check_on_select(pdf_file_path_list, show_print=True)
-        print(f"Menggeser file ke atas. Urutan file diubah.")
+        print(f"Moving file up. File order changed.")
     elif current_selected_pdf_index == 0:
-        print("File sudah berada di urutan paling atas.")
+        print("File is already at the top.")
     else:
-        print("Harap pilih file dari daftar terlebih dahulu.")
+        print("Please select a file from the list first.")
 
 
 def move_pdf_down():
@@ -182,16 +181,16 @@ def move_pdf_down():
         
         update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
         check_on_select(pdf_file_path_list, show_print=True)
-        print(f"Menggeser file ke bawah. Urutan file diubah.")
+        print(f"Moving file down. File order changed.")
     elif current_selected_pdf_index == len(pdf_file_path_list) - 1 and current_selected_pdf_index != -1:
-        print("File sudah berada di urutan paling bawah.")
+        print("File is already at the bottom.")
     else:
-        print("Harap pilih file dari daftar terlebih dahulu.")
-# --- AKHIR FUNGSI MANIPULASI URUTAN PDF ---
+        print("Please select a file from the list first.")
+# --- END PDF ORDER MANIPULATION FUNCTIONS ---
 
 
-# --- FUNGSI UPDATE TAMPILAN STATUS ---
-# Diperbarui: Menerima 3 status (Nama, Hitungan, Resi)
+# --- STATUS DISPLAY UPDATE FUNCTIONS ---
+# Updated: Receives 3 statuses (Name, Count, Waybill)
 def update_check_status_display(match_name, match_count, match_resi):
     global status_label_name, status_label_count, status_label_resi, pdf_file_path_list, sort_var
 
@@ -201,43 +200,43 @@ def update_check_status_display(match_name, match_count, match_resi):
     expected_name = "ELEVEN" if sort_var.get() == "Ascending" else "FAMI"
 
     if not pdf_file_path_list: 
-        status_label_name.config(text=f"1. Pengecekan Nama File ('{expected_name}') ⚪", foreground="black")
-        status_label_count.config(text="2. Baris Data (Excel) dan Halaman (PDF) ⚪", foreground="black")
-        status_label_resi.config(text="3. Pengecekan Nomor Resi (Kolom 7) ⚪", foreground="black")
+        status_label_name.config(text=f"1. File Name Check ('{expected_name}') ⚪", foreground="black")
+        status_label_count.config(text="2. Data Rows (Excel) and Pages (PDF) ⚪", foreground="black")
+        status_label_resi.config(text="3. Waybill Number Check (Column 7) ⚪", foreground="black")
         return
 
-    # 1. Pengecekan Nama File
+    # 1. File Name Check
     if match_name:
-        status_label_name.config(text=f"1. Nama File Sesuai ('{expected_name}') ✅", foreground="green")
+        status_label_name.config(text=f"1. File Name Matches ('{expected_name}') ✅", foreground="green")
     else:
-        status_label_name.config(text=f"1. Nama File TIDAK Sesuai ('{expected_name}') 🚨", foreground="red")
+        status_label_name.config(text=f"1. File Name DOES NOT Match ('{expected_name}') 🚨", foreground="red")
 
-    # 2. Pengecekan Baris/Halaman (hanya jika nama file sesuai)
+    # 2. Row/Page Check (only if file name matches)
     if not match_name:
-        status_label_count.config(text="2. (Menunggu Nama File Sesuai) 🟡", foreground="orange")
-        status_label_resi.config(text="3. (Menunggu Nama File Sesuai) 🟡", foreground="orange")
+        status_label_count.config(text="2. (Waiting for File Name Match) 🟡", foreground="orange")
+        status_label_resi.config(text="3. (Waiting for File Name Match) 🟡", foreground="orange")
         return
 
     if match_count:
-        status_label_count.config(text="2. Baris Data dan Halaman sama ✅", foreground="green")
+        status_label_count.config(text="2. Data Rows and Pages match ✅", foreground="green")
     else:
-        status_label_count.config(text="2. Baris Data dan Halaman TIDAK sama 🚨", foreground="red")
+        status_label_count.config(text="2. Data Rows and Pages DO NOT match 🚨", foreground="red")
 
-    # 3. Pengecekan Resi (hanya jika nama file dan hitungan sama)
+    # 3. Waybill Check (only if file name and count match)
     if not match_count:
-        status_label_resi.config(text="3. (Menunggu Baris/Halaman Sama) 🟡", foreground="orange")
+        status_label_resi.config(text="3. (Waiting for Row/Page Match) 🟡", foreground="orange")
     else:
         if sort_var.get() == "Ascending":
             if match_resi:
-                status_label_resi.config(text="3. Nomor Resi (5 Digit Terakhir) Sesuai ✅", foreground="green")
+                status_label_resi.config(text="3. Waybill Number (Last 5 Digits) Match ✅", foreground="green")
             else:
-                status_label_resi.config(text="3. Nomor Resi TIDAK Sesuai 🚨", foreground="red")
+                status_label_resi.config(text="3. Waybill Number DOES NOT Match 🚨", foreground="red")
         else:
-            # Descending tidak perlu cek resi
-            status_label_resi.config(text="3. Urutan Descending dipilih (Resi OK) ✅", foreground="green")
+            # Descending does not need waybill check
+            status_label_resi.config(text="3. Descending Order selected (Waybill OK) ✅", foreground="green")
 
 
-# --- FUNGSI AUTO-REFRESH EXCEL ---
+# --- EXCEL AUTO-REFRESH FUNCTION ---
 def check_excel_modified(root):
     global last_excel_modified_time, pdf_file_path_list
     
@@ -256,25 +255,25 @@ def check_excel_modified(root):
                     df = pd.read_excel(excel_path, header=None)
                     valid_rows = df.iloc[:, 0].dropna().shape[0]
                     update_excel_count_label(valid_rows)
-                    print(f"✅ Refresh: Total Baris Data Excel diperbarui menjadi {valid_rows}.")
+                    print(f"✅ Refresh: Total Excel Data Rows updated to {valid_rows}.")
             
         except Exception as e:
-            print(f"Peringatan Auto-Refresh: Gagal membaca status file Excel: {e}")
+            print(f"Auto-Refresh Warning: Failed to read Excel file status: {e}")
             
     root.after(2000, lambda: check_excel_modified(root))
 
 
-# --- FUNGSI VALIDASI RESI (Ascending Mode) ---
+# --- WAYBILL VALIDATION FUNCTION (Ascending Mode) ---
 def validate_resi_number(pdf_paths, excel_path):
-    print("🔬 Validasi Resi (Ascending Mode)...")
+    print("🔬 Waybill Validation (Ascending Mode)...")
     
     try:
         df = pd.read_excel(excel_path, header=None) 
-        # Ambil data dari kolom ke-7 (indeks 6)
+        # Get data from column 7 (index 6)
         resi_excel_list = [str(item).strip() for item in df.iloc[:, 6].dropna().tolist() if pd.notna(item)]
         
         if not resi_excel_list:
-            print("Peringatan: Kolom 7 (Resi) di Excel kosong. Lanjut tanpa validasi resi.")
+            print("Warning: Column 7 (Waybill) in Excel is empty. Proceeding without waybill validation.")
             return True 
 
         mismatches = []
@@ -282,28 +281,28 @@ def validate_resi_number(pdf_paths, excel_path):
 
         for pdf_path in pdf_paths:
             try:
-                # Menggunakan PdfReader karena pdfplumber tidak diperlukan di sini
+                # Using PdfReader as pdfplumber is not needed here
                 pdf_reader = PdfReader(pdf_path)
                 pdf_page_count = len(pdf_reader.pages)
                 
                 for i in range(pdf_page_count):
-                    # Fungsi extract_resi_number_from_pdf menggunakan pdfplumber
-                    resi_lengkap_pdf = extract_resi_number_from_pdf(pdf_path, i)
+                    # extract_resi_number_from_pdf function uses pdfplumber
+                    full_waybill_pdf = extract_resi_number_from_pdf(pdf_path, i)
                     
-                    resi_bersih_pdf = re.sub(r'\D', '', resi_lengkap_pdf)
-                    resi_5_digit_pdf = resi_bersih_pdf[-5:] if len(resi_bersih_pdf) >= 5 else resi_bersih_pdf
+                    clean_waybill_pdf = re.sub(r'\D', '', full_waybill_pdf)
+                    waybill_5_digit_pdf = clean_waybill_pdf[-5:] if len(clean_waybill_pdf) >= 5 else clean_waybill_pdf
                     
                     if excel_idx < len(resi_excel_list):
                         resi_excel_value = resi_excel_list[excel_idx]
-                        resi_bersih_excel = re.sub(r'\D', '', resi_excel_value)
-                        resi_5_digit_excel = resi_bersih_excel[-5:] if len(resi_bersih_excel) >= 5 else resi_bersih_excel
+                        clean_waybill_excel = re.sub(r'\D', '', resi_excel_value)
+                        waybill_5_digit_excel = clean_waybill_excel[-5:] if len(clean_waybill_excel) >= 5 else clean_waybill_excel
 
-                        if resi_5_digit_pdf != resi_5_digit_excel:
+                        if waybill_5_digit_pdf != waybill_5_digit_excel:
                             mismatches.append({
                                 "File PDF": os.path.basename(pdf_path),
                                 "Halaman PDF": i + 1,
                                 "Baris Excel": excel_idx + 1,
-                                "Resi PDF (5 Digit Terakhir)": resi_5_digit_pdf,
+                                "Resi PDF (5 Digit Terakhir)": waybill_5_digit_pdf,
                                 "Resi Excel (Kolom 7)": resi_excel_value 
                             })
                         excel_idx += 1
@@ -311,36 +310,36 @@ def validate_resi_number(pdf_paths, excel_path):
                         break
 
             except Exception as e:
-                print(f"ERROR: Gagal memproses file {os.path.basename(pdf_path)} saat validasi resi: {e}")
+                print(f"ERROR: Failed to process file {os.path.basename(pdf_path)} during waybill validation: {e}")
                 continue 
         
         if mismatches:
-            print("🚨 GAGAL: Ditemukan ketidakcocokan 5 Digit Terakhir resi:")
+            print("🚨 FAILED: Mismatches found in the last 5 Digits of the waybill number:")
             for m in mismatches:
-                print(f"-> File {m['File PDF']}, Halaman {m['Halaman PDF']} (Baris Excel {m['Baris Excel']}): PDF 5 Digit Terakhir '{m['Resi PDF (5 Digit Terakhir)']}' TIDAK SAMA dengan Excel '{m['Resi Excel (Kolom 7)']}'")
+                print(f"-> File {m['File PDF']}, Page {m['Halaman PDF']} (Excel Row {m['Baris Excel']}): PDF Last 5 Digits '{m['Resi PDF (5 Digit Terakhir)']}' DO NOT MATCH Excel '{m['Resi Excel (Kolom 7)']}'")
             return False
 
-        print("[STATUS] SUKSES: 5 Digit Terakhir resi di PDF cocok dengan Kolom 7 Excel.")
+        print("[STATUS] SUCCESS: Last 5 Digits of waybill in PDF match Excel Column 7.")
         return True
 
     except Exception as e:
-        print(f"ERROR: Terjadi kesalahan saat validasi resi: {e}")
-        messagebox.showerror("Kesalahan Validasi", f"Terjadi kesalahan saat membandingkan data resi: {e}. Pastikan Kolom 7 terisi data yang benar.")
+        print(f"ERROR: An error occurred during waybill validation: {e}")
+        messagebox.showerror("Validation Error", f"An error occurred while comparing waybill data: {e}. Ensure Column 7 contains the correct data.")
         return False
 
 
-# --- FUNGSI EKSTRAKSI RESI ---
+# --- WAYBILL EXTRACTION FUNCTION ---
 def extract_resi_number_from_pdf(pdf_path, page_num):
     target_string = "交貨便服務代碼"
     
-    # Fungsi ini memerlukan library pdfplumber
+    # This function requires the pdfplumber library
     try:
         with pdfplumber.open(pdf_path) as pdf:
             page = pdf.pages[page_num]
             text = page.extract_text()
             
             if text is None:
-                return "ERROR: Teks Tidak Dapat Diekstrak"
+                return "ERROR: Text Could Not Be Extracted"
                 
             cleaned_text = " ".join(text.split())
 
@@ -354,9 +353,9 @@ def extract_resi_number_from_pdf(pdf_path, page_num):
                 if match:
                     return match.group(1).strip()
                 else:
-                    return f"DEBUG: '{target_string}' Ditemukan, TAPI POLA REGEX GAGAL" 
+                    return f"DEBUG: '{target_string}' Found, BUT REGEX PATTERN FAILED" 
             
-            # --- POLA CADANGAN ---
+            # --- FALLBACK PATTERNS ---
             long_number_pattern = re.compile(r'(\d{4}\s\d{4}\s\d{4}\s\d{4})')
             match = long_number_pattern.search(text)
             if match:
@@ -367,23 +366,23 @@ def extract_resi_number_from_pdf(pdf_path, page_num):
             if match:
                 return match.group(1).replace(' ', '')
                     
-            return f"DEBUG: '{target_string}' TIDAK DITEMUKAN"
+            return f"DEBUG: '{target_string}' NOT FOUND"
             
     except Exception as e:
-        print(f"ERROR: Gagal Membaca/Memproses PDF di halaman {page_num + 1}: {e}")
-        return f"ERROR: Gagal Membaca PDF"
+        print(f"ERROR: Failed to Read/Process PDF on page {page_num + 1}: {e}")
+        return f"ERROR: Failed to Read PDF"
 
-# --- FUNGSI PENGECEKAN KESEIMBANGAN AWAL (Memuat Data Kolom 3) ---
+# --- INITIAL BALANCE CHECK FUNCTION (Loading Column 3 Data) ---
 def check_on_select(pdf_paths, show_print=True):
-    global is_name_match, is_count_match, is_resi_match, keterangan_data_global, sort_var
+    global is_name_match, is_count_match, is_resi_match, description_data_global, sort_var
     
-    # Reset status count dan resi, namun is_name_match akan dihitung ulang
+    # Reset count and waybill status, but is_name_match will be recalculated
     is_count_match = False
     is_resi_match = True 
-    keterangan_data_global = None
+    description_data_global = None
     excel_path = get_excel_filename()
 
-    # TAHAP 0: Pengecekan Nama File (diulang di sini untuk support tombol panah & auto-refresh)
+    # PHASE 0: File Name Check (recalculated here to support arrow buttons & auto-refresh)
     current_sort = sort_var.get()
     expected_name = "ELEVEN" if current_sort == "Ascending" else "FAMI"
     is_name_valid_current = True
@@ -396,7 +395,7 @@ def check_on_select(pdf_paths, show_print=True):
     else:
         is_name_valid_current = False
     
-    is_name_match = is_name_valid_current # Update status global
+    is_name_match = is_name_valid_current # Update global status
     
     if not is_name_match or not excel_path:
         is_count_match = False
@@ -404,86 +403,86 @@ def check_on_select(pdf_paths, show_print=True):
         update_check_status_display(is_name_match, is_count_match, is_resi_match)
         return False
         
-    # Jika nama file sesuai, lanjutkan ke pengecekan hitungan
+    # If file name matches, proceed to count check
     try:
-        # TAHAP 1: MEMBACA HANYA KOLOM A (Keterangan Barang)
-        df_keterangan = pd.read_excel(excel_path, header=None, usecols=[0])
+        # PHASE 1: READ ONLY COLUMN A (Item Description)
+        df_description = pd.read_excel(excel_path, header=None, usecols=[0])
         
-        # Bersihkan dan siapkan data (Kolom 1 - Keterangan Barang)
-        keterangan_series = df_keterangan.iloc[:, 0].dropna() 
-        keterangan_list = [str(item).replace('\n', ' ') for item in keterangan_series.tolist()]
+        # Clean and prepare data (Column 1 - Item Description)
+        description_series = df_description.iloc[:, 0].dropna() 
+        description_list = [str(item).replace('\n', ' ') for item in description_series.tolist()]
         
-        jumlah_keterangan_excel = len(keterangan_list)
+        total_excel_descriptions = len(description_list)
         
-        # TAHAP 2: MEMBACA KOLOM C (Kolom 3) secara OPSIONAL
-        kolom3_list = [''] * jumlah_keterangan_excel 
+        # PHASE 2: OPTIONALLY READ COLUMN C (Column 3)
+        column3_list = [''] * total_excel_descriptions 
         
         try:
-            df_kolom3 = pd.read_excel(excel_path, header=None, usecols=[2])
+            df_column3 = pd.read_excel(excel_path, header=None, usecols=[2])
             
-            kolom3_series = df_kolom3.iloc[:jumlah_keterangan_excel, 0].fillna('')
-            kolom3_list = [str(item).replace('\n', ' ') for item in kolom3_series.tolist()]
+            column3_series = df_column3.iloc[:total_excel_descriptions, 0].fillna('')
+            column3_list = [str(item).replace('\n', ' ') for item in column3_series.tolist()]
 
             if show_print:
-                print("✅ Kolom 3 (Data Selip) ditemukan dan dimuat.")
+                print("✅ Column 3 (Slip Data) found and loaded.")
                 
         except ValueError as ve:
             if "out-of-bounds indices" in str(ve) or "does not exist" in str(ve):
                 if show_print:
-                    print("⚠️ Peringatan: Kolom 3 (Notes) tidak ditemukan di Excel. Program akan mengabaikannya")
+                    print("⚠️ Warning: Column 3 (Notes) not found in Excel. Program will ignore it.")
             else:
                 raise ve
         
-        keterangan_data_global = list(zip(keterangan_list, kolom3_list))
+        description_data_global = list(zip(description_list, column3_list))
 
-        # 3. Hitung Total Halaman PDF dari SEMUA file
-        jumlah_halaman_pdf = 0
+        # 3. Calculate Total PDF Pages from ALL files
+        total_pdf_pages = 0
         for pdf_path in pdf_paths:
             try:
                 pdf_reader = PdfReader(pdf_path)
-                jumlah_halaman_pdf += len(pdf_reader.pages)
+                total_pdf_pages += len(pdf_reader.pages)
             except Exception as e:
-                print(f"Peringatan: Gagal membaca file PDF {os.path.basename(pdf_path)}: {e}")
+                print(f"Warning: Failed to read PDF file {os.path.basename(pdf_path)}: {e}")
                 
         
-        update_excel_count_label(jumlah_keterangan_excel)
-        update_pdf_count_label(jumlah_halaman_pdf)
+        update_excel_count_label(total_excel_descriptions)
+        update_pdf_count_label(total_pdf_pages)
 
-        # 4. Logika Pengecekan Keseimbangan 
+        # 4. Balance Check Logic 
         if show_print:
             print("\n" + "=" * 50)
-            print(f"✅ Pengecekan Keseimbangan Data...")
-            print(f"-> Jumlah Baris Data (Kolom 1) di Excel: {jumlah_keterangan_excel}")
-            print(f"-> Jumlah Halaman Total dari PDF: {jumlah_halaman_pdf}")
+            print(f"✅ Data Balance Check...")
+            print(f"-> Total Data Rows (Column 1) in Excel: {total_excel_descriptions}")
+            print(f"-> Total Pages in PDF: {total_pdf_pages}")
 
-        if jumlah_keterangan_excel == jumlah_halaman_pdf:
+        if total_excel_descriptions == total_pdf_pages:
             is_count_match = True
             if show_print:
-                print(f"[STATUS] SUKSES: Jumlah baris data dan halaman SAMA PERSIS.")
+                print(f"[STATUS] SUCCESS: Number of data rows and pages MATCH EXACTLY.")
 
-            # Logika Validasi Resi (Kolom B/7). Selalu aktif jika Ascending.
+            # Waybill Validation Logic (Column B/7). Always active if Ascending.
             if sort_var.get() == "Ascending":
                 is_resi_match = validate_resi_number(pdf_paths, excel_path)
             else:
-                is_resi_match = True # Descending tidak perlu cek resi
+                is_resi_match = True # Descending does not need waybill check
                 if show_print:
-                    print("[STATUS] Urutan Descending dipilih. Pengecekan Nomor Resi DIIBAIKAN.")
+                    print("[STATUS] Descending Order selected. Waybill Number Check IS SKIPPED.")
 
         else:
             is_count_match = False
             is_resi_match = False
             error_message = (
-                f"🚨 PERINGATAN! JUMLAH TIDAK SAMA!\n"
-                f"Baris Data Excel: {jumlah_keterangan_excel}\n"
-                f"Halaman PDF: {jumlah_halaman_pdf}"
+                f"🚨 WARNING! COUNTS DO NOT MATCH!\n"
+                f"Excel Data Rows: {total_excel_descriptions}\n"
+                f"PDF Pages: {total_pdf_pages}"
             )
             if show_print:
-                print(f"[STATUS] GAGAL: {error_message}".replace('\n', ' '))
+                print(f"[STATUS] FAILED: {error_message}".replace('\n', ' '))
                 
         if show_print:
             print("=" * 50)
             
-        # Panggil update display dengan 3 status
+        # Call update display with 3 statuses
         update_check_status_display(is_name_match, is_count_match, is_resi_match)
         return is_count_match 
 
@@ -495,20 +494,20 @@ def check_on_select(pdf_paths, show_print=True):
         update_check_status_display(is_name_match, is_count_match, is_resi_match)
         if show_print:
             if "out-of-bounds indices" in str(e):
-                 print(f"\n[STATUS] ERROR FATAL: Kesalahan indeks yang tidak terduga: {e}")
-                 messagebox.showerror("Kesalahan Pengecekan", "Kesalahan internal indeks Excel yang tidak terduga.")
+                 print(f"\n[STATUS] FATAL ERROR: Unexpected Excel index internal error: {e}")
+                 messagebox.showerror("Check Error", "Unexpected Excel index internal error.")
             else:
-                 print(f"\n[STATUS] ERROR: Terjadi kesalahan saat pengecekan file: {e}")
-                 messagebox.showerror("Kesalahan Pengecekan", f"Terjadi kesalahan saat memuat data: {e}")
+                 print(f"\n[STATUS] ERROR: An error occurred during file check: {e}")
+                 messagebox.showerror("Check Error", f"An error occurred while loading data: {e}")
         return False
 
 
-# Fungsi untuk memilih file PDF (REVERSE URUTAN)
+# Function to select PDF files (REVERSE ORDER)
 def choose_pdf_file():
     global pdf_file_path_list, current_selected_pdf_index, sort_var, is_name_match
     
     filepaths = filedialog.askopenfilenames(
-        title="Pilih File Resi (PDF) - Boleh Pilih Lebih Dari Satu",
+        title="Select Waybill File(s) (PDF) - Multiple Selection Allowed",
         filetypes=[("PDF files", "*.pdf")]
     )
     
@@ -516,13 +515,13 @@ def choose_pdf_file():
         current_sort = sort_var.get()
         expected_name = ""
         
-        # Tentukan kata kunci yang diharapkan
+        # Determine the expected keyword
         if current_sort == "Ascending":
             expected_name = "ELEVEN"
         elif current_sort == "Descending":
             expected_name = "FAMI"
         
-        # Lakukan validasi nama file
+        # Perform file name validation
         valid_filepaths = []
         is_valid = True
         for path in filepaths:
@@ -531,94 +530,94 @@ def choose_pdf_file():
                 valid_filepaths.append(path)
             else:
                 is_valid = False
-                messagebox.showerror("Kesalahan Input", f"File '{os.path.basename(path)}' tidak valid. Karena mode '{current_sort}' dipilih, nama file harus mengandung kata kunci '{expected_name}'.")
-                print(f"🚨 DITOLAK: File '{os.path.basename(path)}' tidak mengandung kata kunci '{expected_name}' untuk mode '{current_sort}'.")
-                break # Batalkan semua jika ada 1 file yang gagal validasi
+                messagebox.showerror("Input Error", f"File '{os.path.basename(path)}' is invalid. Because '{current_sort}' mode is selected, the file name must contain the keyword '{expected_name}'.")
+                print(f"🚨 REJECTED: File '{os.path.basename(path)}' does not contain the keyword '{expected_name}' for '{current_sort}' mode.")
+                break # Cancel all if 1 file fails validation
 
         if is_valid:
             is_name_match = True
             pdf_file_path_list = list(filepaths)
             
-            # MEMBALIKKAN URUTAN FILE (Solusi untuk urutan default yang terbalik)
+            # REVERSE THE FILE ORDER (Solution for default reversed order)
             pdf_file_path_list.reverse() 
-            print(f"Mengubah urutan file yang diimpor (reverse). File pertama yang akan diproses: {os.path.basename(pdf_file_path_list[0])}")
+            print(f"Reversing the imported file order. First file to be processed: {os.path.basename(pdf_file_path_list[0])}")
             
-            pdf_path_label.config(text=f"{len(pdf_file_path_list)} File Dipilih")
+            pdf_path_label.config(text=f"{len(pdf_file_path_list)} Files Selected")
             current_selected_pdf_index = 0 
             update_pdf_list_display(pdf_file_path_list, current_selected_pdf_index)
             
             check_on_select(pdf_file_path_list, show_print=True)
         else:
-            # Jika ada yang gagal validasi atau jika break dipicu
+            # If validation failed or break was triggered
             is_name_match = False
             pdf_file_path_list = [] 
-            pdf_path_label.config(text="Validasi File Gagal")
+            pdf_path_label.config(text="File Validation Failed")
             current_selected_pdf_index = -1
             update_pdf_list_display([])
             update_excel_count_label(0)
             update_pdf_count_label(0)
-            # Panggil update display dengan 3 status (Name, Count, Resi)
+            # Call update display with 3 statuses (Name, Count, Waybill)
             update_check_status_display(is_name_match, False, False) 
 
     else:
-        # Jika user membatalkan dialog file
+        # If user cancels the file dialog
         is_name_match = False
         pdf_file_path_list = [] 
-        pdf_path_label.config(text="Tidak ada file yang dipilih")
+        pdf_path_label.config(text="No files selected")
         current_selected_pdf_index = -1
         update_pdf_list_display([])
         update_excel_count_label(0)
         update_pdf_count_label(0)
-        # Panggil update display dengan 3 status
+        # Call update display with 3 statuses
         update_check_status_display(False, False, False) 
 
 
 def change_sort_order(event=None):
     
     if pdf_file_path_list:
-        # Panggil check_on_select untuk memicu ulang pengecekan (termasuk nama file)
+        # Call check_on_select to re-trigger the check (including file name)
         check_on_select(pdf_file_path_list, show_print=True)
     else:
-        # Panggil display update agar status nama file dan resi ter-refresh
+        # Call display update so file name and waybill status refresh
         update_check_status_display(is_name_match, is_count_match, is_resi_match)
 
 
-# Fungsi untuk memulai proses utama
+# Function to start the main process
 def start_process(sort_order):
     global pdf_file_path_list, is_count_match, is_resi_match, is_name_match
 
     output_text.delete(1.0, tk.END)
 
     if not pdf_file_path_list:
-        messagebox.showerror("Kesalahan", "Harap pilih minimal satu file PDF terlebih dahulu.")
+        messagebox.showerror("Error", "Please select at least one PDF file first.")
         return
     
-    # Lakukan pengecekan akhir sebelum memulai proses
+    # Perform final check before starting the process
     if not check_on_select(pdf_file_path_list, show_print=True):
-        messagebox.showerror("Kesalahan", "Pengecekan Keseimbangan GAGAL. Periksa Output Program untuk detail.")
+        messagebox.showerror("Error", "Balance Check FAILED. Check Program Output for details.")
         return
 
-    # Validasi Tambahan 1: Cek Nama File
+    # Additional Validation 1: Check File Name
     if not is_name_match:
-        messagebox.showerror("Kesalahan", "Pengecekan Nama File GAGAL. Harap pastikan semua file PDF mengandung kata kunci yang sesuai dengan urutan yang dipilih.")
+        messagebox.showerror("Error", "File Name Check FAILED. Please ensure all PDF files contain the keyword corresponding to the selected sort order.")
         return
 
-    # Validasi Tambahan 2: Cek Resi (selalu aktif jika Ascending)
+    # Additional Validation 2: Check Waybill (always active if Ascending)
     if sort_order == "Ascending" and not is_resi_match:
-        messagebox.showerror("Kesalahan", "Pengecekan Nomor Resi GAGAL. Harap periksa Kolom 7 Excel Anda.")
+        messagebox.showerror("Error", "Waybill Number Check FAILED. Please check Column 7 of your Excel file.")
         return
         
-    # --- LOGIKA PENAMAAN FILE OUTPUT ---
+    # --- OUTPUT FILE NAMING LOGIC ---
     first_file_path = pdf_file_path_list[0]
     first_file_name_base = os.path.basename(first_file_path)
     base_name, ext = os.path.splitext(first_file_name_base)
     
     if len(pdf_file_path_list) == 1:
-        default_save_name = f"PROSES_{first_file_name_base}"
+        default_save_name = f"{base_name}{ext}" # Changed for single file consistency
     else:
-        default_save_name = f"{base_name}_FULL{ext}"
+        default_save_name = f"{base_name}_FULL{ext}" # Changed for multi-file consistency
     
-    print(f"Nama default output diatur ke: {default_save_name}")
+    print(f"Default output name set to: {default_save_name}")
 
     save_path = filedialog.asksaveasfilename(
         defaultextension=".pdf",
@@ -628,81 +627,81 @@ def start_process(sort_order):
     )
 
     if not save_path:
-        print("Operasi dibatalkan oleh pengguna.")
+        print("Operation cancelled by user.")
         return
 
     process_pdf_and_excel(sort_order, pdf_file_path_list, save_path)
 
 
-# --- FUNGSI PROSES UTAMA (Menambahkan Teks Khusus) ---
+# --- MAIN PROCESSING FUNCTION (Adding Custom Text) ---
 def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
-    global keterangan_data_global, is_count_match, is_resi_match, is_name_match
+    global description_data_global, is_count_match, is_resi_match, is_name_match
 
-    # Pengecekan ulang sebelum memulai
+    # Re-check before starting
     if not is_name_match:
-        messagebox.showerror("Kesalahan", "Pengecekan Nama File Gagal.")
+        messagebox.showerror("Error", "File Name Check Failed.")
         return
     if not is_count_match:
-        messagebox.showerror("Kesalahan", "Pengecekan Keseimbangan Gagal.")
+        messagebox.showerror("Error", "Balance Check Failed.")
         return
     
-    # Validasi Resi (Ascending Mode)
+    # Waybill Validation (Ascending Mode)
     if sort_order == "Ascending" and not is_resi_match:
-        messagebox.showerror("Kesalahan", "Pengecekan Resi Gagal.")
+        messagebox.showerror("Error", "Waybill Check Failed.")
         return
 
 
-    keterangan_data = keterangan_data_global 
+    description_data = description_data_global 
 
-    print("Mengeksekusi program...")
+    print("Executing program...")
     print("=" * 50)
 
     try:
         if sort_order == "Descending":
-            keterangan_data.reverse()
-            print("Urutan keterangan dari Bawah ke Atas (Descending).")
+            description_data.reverse()
+            print("Description order is Bottom to Top (Descending).")
         else:
-            print("Urutan keterangan dari Atas ke Bawah (Ascending).")
+            print("Description order is Top to Bottom (Ascending).")
         
         pdf_writer = PdfWriter()
-        keterangan_index = 0
+        description_index = 0
 
-        # --- PENGATURAN FONT KUSTOM ---
+        # --- CUSTOM FONT SETTINGS ---
         FONT_NORMAL = "Helvetica-Bold"
-        FONT_SIZE_NORMAL = 9  # Ukuran default 
-        FONT_SIZE_NUMBER = 18 # Ukuran khusus untuk angka murni
+        FONT_SIZE_NORMAL = 9  # Default size 
+        FONT_SIZE_NUMBER = 18 # Specific size for pure numbers
         MAX_LINE_WIDTH = 300
-        LINE_SPACING = FONT_SIZE_NORMAL + 1 # Jarak antar baris
+        LINE_SPACING = FONT_SIZE_NORMAL + 1 # Spacing between lines
         # -----------------------------
 
         for pdf_input_path in pdf_input_paths:
-            print(f"Memproses file: {os.path.basename(pdf_input_path)}...")
+            print(f"Processing file: {os.path.basename(pdf_input_path)}...")
 
             try:
                 pdf_reader = PdfReader(pdf_input_path)
             except Exception as e:
-                print(f"Peringatan: Gagal memuat file {os.path.basename(pdf_input_path)}. Melewati file ini. Error: {e}")
+                print(f"Warning: Failed to load file {os.path.basename(pdf_input_path)}. Skipping this file. Error: {e}")
                 continue
 
             if 'page_height' not in locals():
                 page_height = float(pdf_reader.pages[0].mediabox.height)
 
             for i, page in enumerate(pdf_reader.pages):
-                if keterangan_index >= len(keterangan_data):
-                    print(f"Peringatan: Keterangan Excel habis di Halaman {i+1} dari {os.path.basename(pdf_input_path)}. Berhenti memproses halaman PDF.")
+                if description_index >= len(description_data):
+                    print(f"Warning: Excel descriptions ran out on Page {i+1} of {os.path.basename(pdf_input_path)}. Stopping PDF page processing.")
                     break
 
-                # Ambil data dari list global: (keterangan_barang, data_kolom_3)
-                keterangan_barang_asli, data_kolom3_asli = keterangan_data[keterangan_index]
-                keterangan_index += 1
+                # Get data from global list: (item_description, column_3_data)
+                original_description, original_column3_data = description_data[description_index]
+                description_index += 1
                 
-                # --- LOGIKA PENAMBAHAN TULISAN KHUSUS (SELIPKAN 60 NT) ---
-                keterangan_final = keterangan_barang_asli
-                # Cek apakah angka '60' ada di data_kolom3_asli (menggunakan string)
-                if '60' in str(data_kolom3_asli):
-                    teks_khusus = "(SELIPKAN 60 NT !!) "
-                    print(f" -> Deteksi '60' di Kolom 3 (Halaman {i+1}): Menambahkan '{teks_khusus.strip()}'")
-                    keterangan_final = teks_khusus + keterangan_barang_asli
+                # --- SPECIAL TEXT ADDITION LOGIC (INSERT 60 NT) ---
+                final_description = original_description
+                # Check if the number '60' is in original_column3_data (using string conversion)
+                if '60' in str(original_column3_data):
+                    special_text = "(INSERT 60 NT !!) "
+                    print(f" -> '60' detected in Column 3 (Page {i+1}): Adding '{special_text.strip()}'")
+                    final_description = special_text + original_description
                 # -----------------------------------------------------------
 
                 
@@ -713,19 +712,19 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 y_pos_from_top = 190
                 y_pos_from_bottom = page_height - y_pos_from_top
 
-                # --- 1. LOGIKA WORD WRAPPING ---
-                # Menggunakan FONT_SIZE_NORMAL untuk perhitungan lebar baris
+                # --- 1. WORD WRAPPING LOGIC ---
+                # Use FONT_SIZE_NORMAL for line width calculation
                 can.setFont(FONT_NORMAL, FONT_SIZE_NORMAL)
                 
-                # Menggunakan keterangan_final
-                words = keterangan_final.split(' ')
+                # Use final_description
+                words = final_description.split(' ')
                 lines = []
                 current_line = ""
                 for word in words:
-                    # Menggunakan spasi agar perhitungan lebar akurat
+                    # Use a space for accurate width calculation
                     test_line = current_line + " " + word if current_line else word
                     
-                    # Cek lebar menggunakan FONT_SIZE_NORMAL
+                    # Check width using FONT_SIZE_NORMAL
                     if can.stringWidth(test_line, FONT_NORMAL, FONT_SIZE_NORMAL) < MAX_LINE_WIDTH:
                         current_line = test_line
                     else:
@@ -734,9 +733,9 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                         current_line = word
                 lines.append(current_line.strip())
                 
-                # --- 2. PENENTUAN POSISI AWAL ---
+                # --- 2. INITIAL POSITION DETERMINATION ---
                 
-                # Perkiraan tinggi blok (menggunakan LINE_SPACING)
+                # Estimated block height (using LINE_SPACING)
                 text_block_height = len(lines) * LINE_SPACING 
                 initial_y_pos = y_pos_from_bottom + (text_block_height / 2)
 
@@ -744,27 +743,27 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 can.translate(x_pos_center, initial_y_pos)
                 can.rotate(90)
                 
-                # --- 3. LOGIKA CETAK DENGAN FONT SIZE YANG BERBEDA & OFFSET VERTICAL ---
+                # --- 3. PRINTING LOGIC WITH DIFFERENT FONT SIZES & VERTICAL OFFSET ---
                 
-                # Kalkulasi Offset Vertikal untuk menyelaraskan angka besar di tengah
+                # Vertical Offset Calculation to align large numbers in the center
                 FONT_SIZE_DIFF = FONT_SIZE_NUMBER - FONT_SIZE_NORMAL
-                Y_ADJUSTMENT = FONT_SIZE_DIFF / 2.5 # Nilai 2.5 adalah nilai penyesuaian empiris yang bekerja baik
+                Y_ADJUSTMENT = FONT_SIZE_DIFF / 2.5 # 2.5 is an empirical adjustment value that works well
 
                 for j, line in enumerate(lines):
                     current_x = 0
                     
-                    # Memecah baris menjadi token: (teks, angka, (angka))
-                    # Regex: (\d+)|(\(.*?\))|([^\s\d()]+) -> Angka, Kurung, Teks
+                    # Tokenize the line: (text, number, (number))
+                    # Regex: (\d+)|(\(.*?\))|([^\s\d()]+) -> Numbers, Parentheses, Text
                     tokens = re.findall(r'(\d+)|(\(.*?\))|([^\s\d()]+)', line)
                     
-                    # --- Kalkulasi Lebar untuk Centering ---
+                    # --- Width Calculation for Centering ---
                     total_width = 0
                     word_segments = []
 
-                    # Tahap 1: Tokenisasi dan Kalkulasi Lebar
+                    # Phase 1: Tokenization and Width Calculation
                     for token_group in tokens:
                         for segment in token_group:
-                            if segment: # Pastikan segmen tidak kosong
+                            if segment: # Ensure the segment is not empty
                                 is_number_only = segment.isdigit()
                                 is_in_parentheses = segment.startswith('(') and segment.endswith(')')
                                 
@@ -776,13 +775,13 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                                 total_width += can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL) 
                     
                     if total_width > 0:
-                        # Kurangi lebar spasi terakhir
+                        # Subtract the width of the last space
                         total_width -= can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL) 
 
                     start_x = -total_width / 2
-                    # --- Akhir Kalkulasi Lebar ---
+                    # --- End Width Calculation ---
 
-                    # Tahap 2: Pencetakan Berdasarkan Segmen
+                    # Phase 2: Printing Based on Segments
                     for segment_data in word_segments:
                         word = segment_data['text']
                         font_size = segment_data['size']
@@ -791,57 +790,57 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
 
                         word_width = can.stringWidth(word, FONT_NORMAL, font_size)
                         
-                        # --- KUNCI: Penyesuaian Posisi Y (Offset Vertikal) ---
-                        # Teks normal dicetak di baseline (0). Teks besar digeser ke bawah.
+                        # --- KEY: Y Position Adjustment (Vertical Offset) ---
+                        # Normal text is printed at the baseline (0). Large text is shifted down.
                         y_pos_in_rotation = j * -LINE_SPACING
                         
                         if font_size == FONT_SIZE_NUMBER:
-                            # Terapkan offset Y negatif untuk menggeser ke bawah
+                            # Apply negative Y offset to shift down
                             final_y_pos = y_pos_in_rotation - Y_ADJUSTMENT
                         else:
                             final_y_pos = y_pos_in_rotation
                         
-                        # Mencetak kata/segmen dengan font size dan posisi Y yang disesuaikan
+                        # Print the word/segment with adjusted font size and Y position
                         can.drawString(start_x + current_x, final_y_pos, word)
                         
-                        # Pindahkan posisi x untuk kata berikutnya, tambahkan spasi setelah kata
+                        # Move the x position for the next word, add space after the word
                         current_x += word_width + can.stringWidth(' ', FONT_NORMAL, FONT_SIZE_NORMAL)
                 
                 can.restoreState()
                 can.save()
-                # --- AKHIR LOGIKA REPORTLAB ---
+                # --- END REPORTLAB LOGIC ---
 
                 packet.seek(0)
                 new_pdf = PdfReader(packet)
                 page.merge_page(new_pdf.pages[0])
                 pdf_writer.add_page(page)
             
-            if keterangan_index >= len(keterangan_data):
+            if description_index >= len(description_data):
                 break
 
         
         with open(pdf_output_path, 'wb') as f:
             pdf_writer.write(f)
 
-        print(f"\nOperasi selesai. File hasil disimpan sebagai '{os.path.basename(pdf_output_path)}'.")
+        print(f"\nOperation complete. Result file saved as '{os.path.basename(pdf_output_path)}'.")
         
-        # --- BUKA FILE OTOMATIS (AKTIF) ---
+        # --- AUTO-OPEN FILE (ACTIVE) ---
         open_file_in_os(pdf_output_path)
         # ---------------------------
 
-        messagebox.showinfo("Selesai", f"Operasi selesai. File hasil disimpan sebagai '{os.path.basename(pdf_output_path)}' dan telah dibuka.")
+        messagebox.showinfo("Complete", f"Operation complete. Result file saved as '{os.path.basename(pdf_output_path)}' and has been opened.")
 
     except Exception as e:
-        print(f"\nTerjadi kesalahan: {e}")
-        messagebox.showerror("Kesalahan", f"Terjadi kesalahan: {e}")
+        print(f"\nAn error occurred: {e}")
+        messagebox.showerror("Error", f"An error occurred: {e}")
 
 
-# --- SETUP GUI ---
+# --- GUI SETUP ---
 def create_ui():
     global pdf_path_label, output_text, excel_count_label, pdf_count_label, last_excel_modified_time, status_label_name, status_label_count, status_label_resi, sort_var, pdf_list_display, open_file_var
     
     root = tk.Tk()
-    root.title("Alat Input Keterangan Resi")
+    root.title("ResiText - Waybill Description Input Tool")
     
     APP_BG = '#e6f0ff'
     STATUS_BOX_BG = 'white' 
@@ -874,30 +873,28 @@ def create_ui():
     top_grid_frame.columnconfigure(2, weight=1) 
     top_grid_frame.columnconfigure(4, weight=1) 
 
-    # --- STEP 1: PILIHAN URUTAN (Kolom 0) ---
+    # --- STEP 1: SORT ORDER TYPE (Column 0) ---
     sort_var = tk.StringVar(value="Ascending") 
     
     step1_frame = ttk.Frame(top_grid_frame)
     step1_frame.grid(row=0, column=0, padx=10, sticky='nwes')
-    ttk.Label(step1_frame, text="Step 1: Jenis Urutan Data", style='Step.TLabel').pack(pady=(0, 10), anchor='center') 
+    ttk.Label(step1_frame, text="Step 1: Sort Order Type", style='Step.TLabel').pack(pady=(0, 10), anchor='center') 
     
     radio_frame1 = ttk.Frame(step1_frame)
     radio_frame1.pack(anchor='w', pady=(5, 10), padx=20) 
 
-    # Radio Button untuk Ascending
+    # Radio Button for Ascending
     asc_radio = ttk.Radiobutton(radio_frame1, text="Ascending (7-Eleven)", variable=sort_var, value="Ascending", command=change_sort_order)
     asc_radio.pack(anchor='w', pady=(0, 5)) 
     
-    # Radio Button untuk Descending
+    # Radio Button for Descending
     desc_radio = ttk.Radiobutton(radio_frame1, text="Descending (Family-Mart)", variable=sort_var, value="Descending", command=change_sort_order)
     desc_radio.pack(anchor='w', pady=(0, 10)) 
-    
-    # HAPUS Checkbox untuk Validasi Resi
     
     ttk.Separator(top_grid_frame, orient='vertical').grid(row=0, column=1, sticky='ns', padx=10)
 
 
-    # --- STEP 2: EXCEL DATA (Kolom 2) ---
+    # --- STEP 2: EXCEL DATA (Column 2) ---
     step2_frame = ttk.Frame(top_grid_frame)
     step2_frame.grid(row=0, column=2, padx=10, sticky='nwes')
     ttk.Label(step2_frame, text="Step 2: Excel Data", style='Step.TLabel').pack(pady=(0, 10), anchor='center')
@@ -905,14 +902,14 @@ def create_ui():
     excel_content_frame = ttk.Frame(step2_frame)
     excel_content_frame.pack(anchor='center')
     
-    excel_name = os.path.basename(get_excel_filename()) if get_excel_filename() else "x.xlsx (Tidak Ditemukan)"
-    ttk.Label(excel_content_frame, text=f"File Excel Ditemukan: {excel_name}").pack(pady=(0, 5), anchor='w')
+    excel_name = os.path.basename(get_excel_filename()) if get_excel_filename() else "x.xlsx (Not Found)"
+    ttk.Label(excel_content_frame, text=f"Excel File Found: {excel_name}").pack(pady=(0, 5), anchor='w')
     
-    edit_excel_label = ttk.Label(excel_content_frame, text="Edit file Excel", foreground="#0000ff", cursor="hand2")
+    edit_excel_label = ttk.Label(excel_content_frame, text="Edit Excel file", foreground="#0000ff", cursor="hand2")
     edit_excel_label.pack(pady=(5, 10), anchor='w')
     edit_excel_label.bind("<Button-1>", lambda e: edit_excel_file())
 
-    ttk.Label(excel_content_frame, text="Total Baris Data:").pack(pady=(10, 2), anchor='w')
+    ttk.Label(excel_content_frame, text="Total Data Rows:").pack(pady=(10, 2), anchor='w')
     excel_count_box = tk.Frame(excel_content_frame, bg=STATUS_BOX_BG, relief=STATUS_BOX_RELIEF, borderwidth=1, width=150, height=30)
     excel_count_box.pack(anchor='w')
     excel_count_box.pack_propagate(False) 
@@ -924,16 +921,16 @@ def create_ui():
     ttk.Separator(top_grid_frame, orient='vertical').grid(row=0, column=3, sticky='ns', padx=10)
 
 
-    # --- STEP 3: PILIH RESI PDF (Kolom 4) ---
+    # --- STEP 3: SELECT WAYBILL PDF (Column 4) ---
     step3_frame = ttk.Frame(top_grid_frame)
     step3_frame.grid(row=0, column=4, padx=10, sticky='nwes')
     
-    ttk.Label(step3_frame, text="Step 3: Pilih Resi PDF (Multi-file)", style='Step.TLabel').pack(pady=(0, 10), anchor='center')
+    ttk.Label(step3_frame, text="Step 3: Select Waybill PDF(s) (Multi-file)", style='Step.TLabel').pack(pady=(0, 10), anchor='center')
     
     pdf_controls_frame = ttk.Frame(step3_frame)
     pdf_controls_frame.pack(anchor='center', fill='x', padx=10)
 
-    pdf_path_label = ttk.Label(pdf_controls_frame, text="Tidak ada file yang dipilih")
+    pdf_path_label = ttk.Label(pdf_controls_frame, text="No files selected")
     pdf_path_label.pack(pady=(5, 5), anchor='center') 
     
     pdf_input_frame = ttk.Frame(pdf_controls_frame)
@@ -941,7 +938,7 @@ def create_ui():
     
     ttk.Button(pdf_input_frame, text="Add PDF(s)", command=choose_pdf_file, style='TButton').pack(side=tk.LEFT)
     
-    ttk.Label(pdf_controls_frame, text="Daftar File Dipilih:").pack(pady=(10, 2), anchor='w')
+    ttk.Label(pdf_controls_frame, text="Selected File List:").pack(pady=(10, 2), anchor='w')
     
     list_and_control_frame = ttk.Frame(pdf_controls_frame)
     list_and_control_frame.pack(fill=tk.X, expand=True)
@@ -957,19 +954,19 @@ def create_ui():
     ttk.Button(order_buttons_frame, text="▼ Down", command=move_pdf_down).pack(fill=tk.X, pady=2)
     
     
-    # Frame untuk menampung label Total Halaman dan Checkbox Buka File
+    # Frame to hold Total Pages label and Open File Checkbox
     bottom_pdf_frame = ttk.Frame(pdf_controls_frame)
     bottom_pdf_frame.pack(fill='x', pady=(10, 5))
     
     
-    # Frame untuk Total Halaman PDF (Baris Atas)
+    # Frame for Total PDF Pages (Top Row)
     pdf_count_wrapper_frame = ttk.Frame(bottom_pdf_frame)
     pdf_count_wrapper_frame.pack(anchor='w', pady=(0, 5)) 
     
-    # Label 'Total Halaman PDF:' (di sebelah kiri)
-    ttk.Label(pdf_count_wrapper_frame, text="Total Halaman PDF:").pack(side=tk.LEFT, padx=(0, 5))
+    # 'Total PDF Pages:' Label (on the left)
+    ttk.Label(pdf_count_wrapper_frame, text="Total PDF Pages:").pack(side=tk.LEFT, padx=(0, 5))
     
-    # KOTAK TOTAL HALAMAN PDF
+    # TOTAL PDF PAGES BOX
     pdf_count_box = tk.Frame(pdf_count_wrapper_frame, bg=STATUS_BOX_BG, relief=STATUS_BOX_RELIEF, borderwidth=1, width=150, height=30) 
     
     pdf_count_box.pack(side=tk.LEFT, anchor='w') 
@@ -980,39 +977,39 @@ def create_ui():
     pdf_count_label.pack(expand=True, fill='both')
     
     
-    # Checkbox Buka File Otomatis (Baris Bawah)
+    # Open File Automatically Checkbox (Bottom Row)
     open_file_var = tk.IntVar(value=0) 
     
     open_file_checkbox = ttk.Checkbutton(bottom_pdf_frame, 
-                                     text="Buka file setelah selesai dibuat", 
+                                     text="Open file after creation", 
                                      variable=open_file_var,
                                      style='TCheckbutton')
     open_file_checkbox.pack(anchor='w', padx=5)
     
     
-    # --- COMMAND SIMPLE KECIL DI ATAS START (3 Status Check) ---
+    # --- SMALL STATUS COMMAND ABOVE START (3 Status Check) ---
     step_status_frame = tk.Frame(main_frame, bg=STATUS_FRAME_BG, relief='groove', borderwidth=1, padx=10, pady=5)
     step_status_frame.pack(pady=(10, 15), fill=tk.X)
     
-    ttk.Label(step_status_frame, text="Pengecekan Status:", font=('Helvetica', 10, 'bold'), background=STATUS_FRAME_BG).pack(anchor='w')
+    ttk.Label(step_status_frame, text="Status Check:", font=('Helvetica', 10, 'bold'), background=STATUS_FRAME_BG).pack(anchor='w')
     
-    # 1. Pengecekan Nama File
-    status_label_name = ttk.Label(step_status_frame, text="1. Pengecekan Nama File ⚪", background=STATUS_FRAME_BG)
+    # 1. File Name Check
+    status_label_name = ttk.Label(step_status_frame, text="1. File Name Check ⚪", background=STATUS_FRAME_BG)
     status_label_name.pack(anchor='w')
     
-    # 2. Pengecekan Hitungan
-    status_label_count = ttk.Label(step_status_frame, text="2. Baris Data (Excel) dan Halaman (PDF) ⚪", background=STATUS_FRAME_BG)
+    # 2. Count Check
+    status_label_count = ttk.Label(step_status_frame, text="2. Data Rows (Excel) and Pages (PDF) ⚪", background=STATUS_FRAME_BG)
     status_label_count.pack(anchor='w')
     
-    # 3. Pengecekan Resi
-    status_label_resi = ttk.Label(step_status_frame, text="3. Pengecekan Nomor Resi (Kolom 7) ⚪", background=STATUS_FRAME_BG)
+    # 3. Waybill Check
+    status_label_resi = ttk.Label(step_status_frame, text="3. Waybill Number Check (Column 7) ⚪", background=STATUS_FRAME_BG)
     status_label_resi.pack(anchor='w')
     # -------------------------------------------------
 
     start_button = ttk.Button(main_frame, text="Start", command=lambda: start_process(sort_var.get()), style='Start.TButton')
     start_button.pack(pady=(10, 20), ipadx=50)
 
-    ttk.Label(main_frame, text="Output Program :").pack(pady=(0, 5), anchor='w')
+    ttk.Label(main_frame, text="Program Output :").pack(pady=(0, 5), anchor='w')
     output_text = ScrolledText(main_frame, height=10, width=70, state='disabled', relief='sunken', borderwidth=2)
     output_text.pack(fill=tk.BOTH, expand=True)
     
@@ -1027,11 +1024,11 @@ def create_ui():
             update_excel_count_label(valid_rows)
             last_excel_modified_time = os.path.getmtime(excel_path_init)
         except Exception as e:
-            print(f"Peringatan: Gagal memuat/menghitung Excel saat startup: {e}")
+            print(f"Warning: Failed to load/count Excel at startup: {e}")
             update_excel_count_label(0)
     
     
-    # Inisialisasi status dengan 3 nilai False
+    # Initialize status with 3 False values
     update_check_status_display(False, False, False)
     update_pdf_list_display([]) 
     
@@ -1042,6 +1039,6 @@ def create_ui():
     
     root.mainloop()
 
-# Jalankan UI
+# Run UI
 if __name__ == '__main__':
     create_ui()
