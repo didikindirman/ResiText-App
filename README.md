@@ -7,7 +7,7 @@
 
 ## Application Preview
 
-![ResiText Application Interface](preview.jpg)
+![ResiText Application Interface](preview.png)
 
 *The image above shows the application's interface with a three-step verification system to ensure data accuracy before processing.*
 
