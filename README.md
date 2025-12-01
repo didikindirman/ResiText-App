@@ -1,67 +1,125 @@
-# ResiText: Logistics Waybill Automation Tool
+
+# ResiText - Waybill Description Automation Tool
 
 ## Overview
 
-**ResiText** is a powerful, localized Python application designed to eliminate manual data entry in high-volume e-commerce logistics and warehouse operations. Developed to solve the common bottleneck of transcribing order data onto printed waybill receipts, this tool automates the process of reading product descriptions and special notes from an Excel file and accurately inserting them onto existing PDF waybills.
+**ResiText** is a Python application that automates the process of adding product descriptions and special notes to waybill (resi) PDF files. It connects data from Excel files to PDF documents, making batch input fast and accurate. This tool is ideal for e-commerce logistics and fulfillment centers that need to print waybills with product details already included. ResiText can reduce manual processing time by up to 95%.
 
-The application includes robust pre-processing checks to ensure data integrity, preventing mis-shipments by validating file counts and waybill IDs before processing.
+## Application Preview
 
-## Key Features
+![ResiText Application Interface](preview.jpg)
 
-* **Custom Text Insertion:** Automatically reads data from specific Excel columns (Item Description and Special Notes) and inserts the text onto individual pages of multiple PDF waybills.
-* **Automatic Data Validation:** Performs critical **three-point checks** to ensure accuracy:
-    1.  **Count Match:** Verifies that the total number of data rows in Excel perfectly matches the total number of pages across all selected PDF files.
-    2.  **File Name Check:** Validates that selected PDF files adhere to the required sorting standard (`ELEVEN` for Ascending or `FAMI` for Descending mode).
-    3.  **Waybill ID Check (Ascending Only):** Automatically validates the last 5 digits of the Waybill ID extracted from the PDF against the corresponding data in Excel (Column G/7).
-* **Dual Sorting Modes:** Supports two primary logistics sorting requirements: **Ascending (Top-to-Bottom)** and **Descending (Bottom-to-Top)** order for data processing.
-* **Special Instruction Handling:** Detects specific keywords (e.g., '60') in the special notes column (Column C) and inserts a highly visible warning text (`(INSERT 60 NT !!)`) before the product description.
-* **PDF Manipulation:** Uses `reportlab` to precisely insert, rotate, and center text at a specific coordinate on the waybill documents.
-* **User-Friendly GUI:** Features a clean graphical user interface built with `tkinter` for easy file selection, status monitoring, and drag-and-drop file reordering.
+*The image above shows the application's interface with a three-step verification system to ensure data accuracy before processing.*
+
+
+## Features
+
+### 1. Three-Step Data Validation
+Before processing, the app performs three automatic checks to prevent errors:
+
+- **File Name Check:** Ensures selected PDF files contain the required keyword (`ELEVEN` for Ascending/7-Eleven, `FAMI` for Descending/Family-Mart) based on the chosen sort order.
+- **Data Count Match:** Verifies that the number of data rows in Excel matches the total number of pages in all selected PDF files.
+- **Waybill Number Validation (Ascending only):** Automatically checks the last 5 digits of the waybill number in the PDF against the value in Excel (Column G/7). This eliminates manual entry and ensures accuracy.
+
+### 2. Smart Text Insertion
+- **Product Description Input:** Reads product descriptions from Excel (Column A) and inserts them into each PDF page at a fixed position.
+- **Dual Sorting Modes:** Supports Ascending (top-to-bottom) and Descending (bottom-to-top) order, adapting to different logistics partners.
+- **Special Instruction Handling:** Detects keywords (e.g., '60') in the notes column (Column C) and adds a warning (`(INSERT 60 NT !!)`) before the product description.
+- **Rotated and Centered Text:** Inserts, rotates, and centers the text on the waybill, with automatic word wrapping for long descriptions.
+
+### 3. Workflow and Usability
+- **Automatic Excel Refresh:** Detects changes in the Excel file and updates the data count in real time.
+- **PDF Order Adjustment:** Lets users change the order of selected PDF files using ▲ Up / ▼ Down buttons.
+- **Auto-Open Output:** Optionally opens the final PDF automatically after processing.
+- **Edit Excel Directly:** "Edit file Excel" button opens the source Excel file for quick edits.
+
 
 ## Prerequisites
 
-To run **ResiText**, you must have Python installed, along with the required libraries.
-
-* Python (3.x recommended)
+- Python 3.x or newer
+- Excel file (`.xlsx` or `.xls`) with the required structure
+- PDF waybill files ready for processing
 
 ## Installation
 
-1.  **Clone the Repository (or download the script):**
-    ```bash
-    git clone [Your Repository URL Here]
-    cd ResiText
-    ```
+1. **Download and Place Files**
+    - Put `ResiText.py` and your Excel file in the same folder
 
-2.  **Install Dependencies:**
-    The application relies on several essential Python libraries for data processing and PDF manipulation.
+2. **Install Dependencies**
+    Open a terminal in the ResiText folder and run:
     ```bash
     pip install pandas PyPDF2 reportlab pdfplumber openpyxl
     ```
-    *(Note: `openpyxl` is required by `pandas` to read `.xlsx` files.)*
 
-## Usage Guide
-
-1.  **Place Files:** Ensure your primary Excel file (`.xlsx` or `.xls`) is placed in the same directory as the `ResiText.py` script.
-2.  **Run the Application:**
+3. **Run the Application**
     ```bash
     python ResiText.py
     ```
 
-3.  **GUI Steps:**
-    * **Step 1: Sort Order Type:** Select the required sorting logic (`Ascending` for 7-Eleven or `Descending` for Family-Mart). This selection triggers the file name validation check.
-    * **Step 2: Excel Data:** The tool will automatically detect your Excel file and display the total number of data rows (Column A). You can click "Edit Excel file" to open it.
-    * **Step 3: Select Waybill PDF(s):** Click **"Add PDF(s)"** and select all waybill files you wish to process.
-        * The file names will be validated against your selected sort order keyword (`ELEVEN` or `FAMI`).
-        * Use the **▲ Up / ▼ Down** buttons to correct the processing order if necessary.
-        * The **"Status Check"** box will confirm if the Excel data rows, PDF pages, and Waybill IDs match. **The process will not start unless all checks pass (green).**
-    * **Start:** Click **"Start"**, choose the save location for your processed PDF, and the automation will begin.
+## Usage Guide
+
+1. **Choose Sort Order**
+    - Select Ascending (7-Eleven) or Descending (Family-Mart)
+    - This affects file validation and processing order
+
+2. **Prepare Excel Data**
+    - Make sure your Excel file is in the same folder
+    - Click "Edit file Excel" to view or edit data
+    - The app will show the total data rows automatically
+
+3. **Select PDF Files**
+    - Click "Add PDF(s)" to select one or more waybill files
+    - The app will validate file names and show a list
+
+4. **Verify Data**
+    - Check the status indicators below the file list
+    - All three should be green (✅) before starting
+
+5. **Adjust PDF Order (Optional)**
+    - Select a file in the list and use ▲ or ▼ to change its position
+
+6. **Start Processing**
+    - Click "Start" and choose where to save the output PDF
+    - The file will open automatically if the option is enabled
 
 ## Required Excel Structure
 
-The automation script relies on specific columns in your Excel file (assuming 0-indexed columns, or A, B, C...):
+The app reads data from specific columns in Excel:
 
-| Column Index | Column Name | Purpose | Required? |
-| :--- | :--- | :--- | :--- |
-| **0 (A)** | Item Description | The main text to be inserted onto the PDF waybill. | YES |
-| **2 (C)** | Special Notes / Slip Data | Used for checking specific instructions (e.g., if it contains '60', special text is added). | YES (Used for logic) |
-| **6 (G)** | Waybill Number | Used for the automatic validation check (last 5 digits) when **Ascending** mode is selected. | YES (For Ascending check) |
+| Column | Name                | Purpose                                         | Required?                |
+|:------:|:-------------------:|:----------------------------------------------- |:------------------------:|
+|   A    | Item Description    | Main text (product name/description) for PDF    | Yes                      |
+|   C    | Special Notes       | For detecting instructions (e.g., '60')         | Yes                      |
+|   G    | Waybill Number      | For validation in Ascending mode                | Yes (Ascending only)     |
+
+### Example Excel Format
+
+| A                    | B    | C     | ... | G     |
+|----------------------|------|-------|-----|-------|
+| Children's Storybook | Shop | 60    | ... | 12345 |
+| Robot Toy            | Shop |       | ... | 12346 |
+| Sports Shoes Size 42 | Shop | 60    | ... | 12347 |
+
+## Troubleshooting
+
+- **File Name DOES NOT Match:**
+  - Make sure PDF file names contain the correct keyword for the selected mode (ELEVEN for Ascending, FAMI for Descending)
+- **Data Rows and Pages DO NOT match:**
+  - Check that the number of rows in Excel matches the total PDF pages
+- **Waybill Number DOES NOT Match:**
+  - Verify column G in Excel matches the waybill numbers in the PDFs
+- **Output PDF does not open automatically:**
+  - Enable the "Open file after creation" checkbox before starting
+
+## Notes
+
+- Always back up your Excel and PDF files before using the app
+- Double-check data before processing large batches
+- Make sure the PDF file order is correct before starting
+- The app will show clear error messages if something is wrong
+
+## License
+
+Developed to simplify e-commerce logistics processes.
+
+**Developer:** © didk_
