@@ -668,7 +668,8 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
 
         # --- CUSTOM FONT SETTINGS ---
         FONT_NORMAL = "Helvetica-Bold"
-        FONT_SIZE_NORMAL = 9  # Default size 
+        FONT_SIZE_NORMAL = 9  # Default size
+        FONT_SIZE_UNIQUE_WORD = 12 # Custom size for unique word
         FONT_SIZE_NUMBER = 18 # Specific size for pure numbers
         MAX_LINE_WIDTH = 300
         LINE_SPACING = FONT_SIZE_NORMAL + 1 # Spacing between lines
@@ -707,6 +708,32 @@ def process_pdf_and_excel(sort_order, pdf_input_paths, pdf_output_path):
                 
                 packet = io.BytesIO()
                 can = canvas.Canvas(packet, pagesize=A4)
+
+                # --- Unique Word Generation (Excel row or Filename) ---
+                unique_word_to_add = ""
+                # Combine Excel row data AND the PDF filename for the check
+                combined_search_string = (str(original_description) + " " + str(original_column3_data) + " " + os.path.basename(pdf_input_path)).lower()
+
+                if 'ida' in combined_search_string:
+                    unique_word_to_add = 'C ID'
+                elif 'cecep' in combined_search_string:
+                    unique_word_to_add = 'CEP'
+                elif 'grosir' in combined_search_string:
+                    unique_word_to_add = 'GRO CC'
+                elif 'bakul' in combined_search_string:
+                    unique_word_to_add = 'BKL'
+
+                if unique_word_to_add:
+                    can.setFont(FONT_NORMAL, FONT_SIZE_UNIQUE_WORD)
+                    if sort_order == "Ascending": # 7-Eleven
+                        x_pos = 140
+                        y_pos = 10
+                    else: # Family-Mart
+                        x_pos = 140
+                        y_pos = 447
+                    can.drawCentredString(x_pos, y_pos, unique_word_to_add)
+                    print(f" -> Keyword found (Excel/Filename): Adding '{unique_word_to_add}' on Page {i+1} at ({x_pos}, {y_pos})")
+                # --- End of Unique Word Generation ---
 
                 x_pos_center = 258
                 y_pos_from_top = 190
